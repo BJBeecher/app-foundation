@@ -4,20 +4,41 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppFoundation",
+    name: "app-foundation",
+    platforms: [.iOS(.v26)],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
-            name: "AppFoundation",
-            targets: ["AppFoundation"]
+            name: "app-foundation",
+            targets: [
+                "Extensions",
+                "Models",
+                "Services",
+                "Views"
+            ]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
+        .package(url: "https://github.com/BJBeecher/Keychain.git", .upToNextMajor(from: "0.0.1")),
+    ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
+        .target(name: "Extensions"),
         .target(
-            name: "AppFoundation"
+            name: "Models",
+            dependencies: ["Extensions"]
         ),
-
+        .target(name: "Services", dependencies: [
+            .target(name: "Models"),
+            .target(name: "Extensions"),
+            .product(name: "Dependencies", package: "swift-dependencies"),
+            .product(name: "Keychain", package: "Keychain")
+        ]),
+        .target(
+            name: "Views",
+            dependencies: [
+                .target(name: "Services"),
+                .product(name: "Dependencies", package: "swift-dependencies")
+            ]
+        )
     ]
 )
