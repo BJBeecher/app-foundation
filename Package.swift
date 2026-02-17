@@ -4,11 +4,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "app-foundation",
+    name: "AppFoundation",
     platforms: [.iOS(.v26)],
     products: [
         .library(
-            name: "app-foundation",
+            name: "AppFoundation",
             targets: [
                 "Extensions",
                 "Models",
