@@ -16,8 +16,8 @@ public struct DataAccessor<T: Decodable>: Sendable {
     
     public init(
         endpoint: HTTPEndpoint<T>,
-        cacheId: String?,
-        postActions: [@Sendable (DataService) async throws -> Void]
+        cacheId: String? = nil,
+        postActions: [@Sendable (DataService) async throws -> Void] = []
     ) {
         self.endpoint = endpoint
         self.cacheId = cacheId
