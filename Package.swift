@@ -7,7 +7,6 @@ let package = Package(
     name: "VerityLabsFoundation",
     platforms: [
         .iOS(.v26),
-        .macOS(.v14),
     ],
     products: [
         .library(
