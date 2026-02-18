@@ -7,7 +7,7 @@
 
 @preconcurrency import Combine
 import Foundation
-import Models
+import VLSharedModels
 
 final class UploadTaskDelegate: NSObject, URLSessionTaskDelegate {
     let progressPublisher = PassthroughSubject<TaskProgress, Never>()

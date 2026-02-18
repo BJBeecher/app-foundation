@@ -7,7 +7,10 @@
 
 import Dependencies
 import Foundation
-import Models
+import VLSharedModels
+import VLCache
+import VLHTTP
+import VLLogging
 
 public protocol DataService: Sendable {
     func observe<T: DataAccessObject>(id: String) -> AsyncStream<T>
@@ -108,7 +111,7 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
 }
 
 final class DataServicePreviewValue: DataService {
-    func loadMore<T>(endpoint: DataAccessor<T>, cursor: String) async throws where T : Models.Paginateable {}
+    func loadMore<T>(endpoint: DataAccessor<T>, cursor: String) async throws where T : Paginateable {}
     
     func observe<T: DataAccessObject>(id: String) -> AsyncStream<T> {
         AsyncStream { $0.yield(.sample) }

@@ -6,11 +6,11 @@
 //
 
 import Foundation
-import Models
+import VLSharedModels
+import VLHTTP
 
 public struct DataAccessor<T: Decodable>: Sendable {
     public var endpoint: HTTPEndpoint<T>
     public let cacheId: String?
     public var postActions: [@Sendable (DataService) async throws -> Void] = []
 }
-

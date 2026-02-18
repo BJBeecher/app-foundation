@@ -4,41 +4,108 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppFoundation",
-    platforms: [.iOS(.v26)],
+    name: "VerityLabsFoundation",
+    platforms: [
+        .iOS(.v26),
+        .macOS(.v14),
+    ],
     products: [
         .library(
-            name: "AppFoundation",
+            name: "VerityLabsFoundation",
             targets: [
-                "Extensions",
-                "Models",
-                "Services",
-                "Views"
+                "VLExtensions",
+                "VLSharedModels",
+                "VLServices",
+                "VLViews"
             ]
         ),
+        .library(name: "VLServices", targets: ["VLServices"]),
+        .library(name: "VLLogging", targets: ["VLLogging"]),
+        .library(name: "VLCache", targets: ["VLCache"]),
+        .library(name: "VLFiles", targets: ["VLFiles"]),
+        .library(name: "VLHTTP", targets: ["VLHTTP"]),
+        .library(name: "VLData", targets: ["VLData"]),
+        .library(name: "VLUtilities", targets: ["VLUtilities"]),
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
-        .package(url: "https://github.com/BJBeecher/Keychain.git", .upToNextMajor(from: "0.0.1")),
     ],
     targets: [
-        .target(name: "Extensions"),
+        .target(name: "VLExtensions", path: "Sources/Extensions"),
         .target(
-            name: "Models",
-            dependencies: ["Extensions"]
+            name: "VLSharedModels",
+            dependencies: ["VLExtensions"],
+            path: "Sources/SharedModels"
         ),
-        .target(name: "Services", dependencies: [
-            .target(name: "Models"),
-            .target(name: "Extensions"),
-            .product(name: "Dependencies", package: "swift-dependencies"),
-            .product(name: "Keychain", package: "Keychain")
-        ]),
         .target(
-            name: "Views",
+            name: "VLLogging",
             dependencies: [
-                .target(name: "Services"),
-                .product(name: "Dependencies", package: "swift-dependencies")
-            ]
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/Logging"
+        ),
+        .target(
+            name: "VLCache",
+            dependencies: [
+                .target(name: "VLSharedModels"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/Cache"
+        ),
+        .target(
+            name: "VLFiles",
+            dependencies: [
+                .target(name: "VLSharedModels"),
+                .target(name: "VLCache"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/Files"
+        ),
+        .target(
+            name: "VLHTTP",
+            dependencies: [
+                .target(name: "VLSharedModels"),
+                .target(name: "VLExtensions"),
+                .target(name: "VLFiles"),
+                .target(name: "VLLogging"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/HTTP"
+        ),
+        .target(
+            name: "VLData",
+            dependencies: [
+                .target(name: "VLSharedModels"),
+                .target(name: "VLCache"),
+                .target(name: "VLHTTP"),
+                .target(name: "VLLogging"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/Data"
+        ),
+        .target(
+            name: "VLUtilities",
+            dependencies: [
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            path: "Sources/Utilities"
+        ),
+        .target(
+            name: "VLServices",
+            dependencies: [
+                .target(name: "VLLogging"),
+                .target(name: "VLCache"),
+                .target(name: "VLFiles"),
+                .target(name: "VLHTTP"),
+                .target(name: "VLData"),
+                .target(name: "VLUtilities"),
+            ],
+            path: "Sources/ServiceExports"
+        ),
+        .target(
+            name: "VLViews",
+            dependencies: [],
+            path: "Sources/Views"
         )
     ]
 )

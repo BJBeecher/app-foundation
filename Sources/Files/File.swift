@@ -5,7 +5,8 @@
 //  Created by BJ Beecher on 2/8/25.
 //
 
-import Extensions
+import VLExtensions
+import VLCache
 import Foundation
 
 public struct File: Cacheable, Hashable, Sendable {

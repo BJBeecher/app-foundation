@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Models
+import VLSharedModels
 
 private struct Payload<T>: @unchecked Sendable {
     let value: T

@@ -1,5 +1,5 @@
 {
-  "originHash" : "a7aaa6546d20b1495bc3645d91eb3827e8b3b677d5b2a58d6f6aec7dabec9a04",
+  "originHash" : "18b7501709f49e6df2a7e2535381a294f76cbcb4e8c154537ea3538fbebff1ef",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "fd16d76fd8b9a976d88bfb6cacc05ca8d19c91b6",
         "version" : "1.1.0"
-      }
-    },
-    {
-      "identity" : "keychain",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/BJBeecher/Keychain.git",
-      "state" : {
-        "revision" : "2abfe100e9363c882adcb7d2e09015e36c70f85e",
-        "version" : "0.0.1"
       }
     },
     {

@@ -7,10 +7,6 @@
 
 import Foundation
 
-public struct EmptyResponse: DataAccessObject {
+public struct EmptyResponse: Sendable, Codable {
     public init() {}
-}
-
-extension EmptyResponse {
-    static public let sample = EmptyResponse()
 }

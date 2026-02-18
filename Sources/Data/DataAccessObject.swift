@@ -5,6 +5,7 @@
 //  Created by BJ Beecher on 3/28/25.
 //
 
+import VLCache
 import Foundation
 
 public protocol DataAccessObject: Codable, Sendable, Sampleable, Cacheable {}

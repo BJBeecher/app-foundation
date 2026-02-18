@@ -1,5 +1,5 @@
 //
-//  FileRepository.swift
+//  FileService.swift
 //  AlbumoCore
 //
 //  Created by BJ Beecher on 2/8/25.
@@ -7,16 +7,17 @@
 
 import Dependencies
 import Foundation
-import Models
+import VLSharedModels
+import VLCache
 import UniformTypeIdentifiers
 
-public protocol FileRepository: Sendable {
+public protocol FileService: Sendable {
     func createFile(data: Data, contentType: ContentType) async throws -> File
     func delete(file: File) async throws
     func delete(files: [File]) async throws
 }
 
-public final class FileRepositoryLiveValue: FileRepository, @unchecked Sendable {
+public final class FileServiceLiveValue: FileService, @unchecked Sendable {
     @Dependency(\.codableStorageService) private var codableStorageService
     
     private let fileManager = FileManager.default
@@ -64,7 +65,7 @@ public final class FileRepositoryLiveValue: FileRepository, @unchecked Sendable 
     }
 }
 
-public final class FileRepositoryPreviewValue: FileRepository {
+public final class FileServicePreviewValue: FileService {
     public func createFile(data: Data, contentType: ContentType) async throws -> File { .sample }
     public func delete(file: File) async throws {}
     public func delete(files: [File]) async throws {}
@@ -72,14 +73,14 @@ public final class FileRepositoryPreviewValue: FileRepository {
 
 // MARK: Dependency
 
-public enum FileRepositoryKey: DependencyKey {
-    public static let liveValue: FileRepository = FileRepositoryLiveValue()
-    public static let previewValue: FileRepository = FileRepositoryPreviewValue()
+public enum FileServiceKey: DependencyKey {
+    public static let liveValue: FileService = FileServiceLiveValue()
+    public static let previewValue: FileService = FileServicePreviewValue()
 }
 
 public extension DependencyValues {
-    var fileRepository: FileRepository {
-        get { self[FileRepositoryKey.self] }
-        set { self[FileRepositoryKey.self] = newValue }
+    var fileService: FileService {
+        get { self[FileServiceKey.self] }
+        set { self[FileServiceKey.self] = newValue }
     }
 }

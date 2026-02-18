@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import VLFiles
 
 public struct MultipartContent: Sendable {
     public let name: String

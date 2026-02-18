@@ -7,9 +7,11 @@
 
 import Combine
 import Dependencies
-import Extensions
+import VLExtensions
 import Foundation
-import Models
+import VLSharedModels
+import VLFiles
+import VLLogging
 
 public enum APIServiceFailure: Error {
     case badStatusCode(Int)
@@ -46,7 +48,7 @@ public extension HTTPService {
 }
 
 public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
-    @Dependency(\.fileRepository) private var fileRepository
+    @Dependency(\.fileService) private var fileService
     @Dependency(\.loggingService) private var loggingService
     
     private let session: URLSession
@@ -110,7 +112,7 @@ public extension APIServiceLiveValue {
         var request = try intercepted.request()
         let multipartBoundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(multipartBoundary)", forHTTPHeaderField: "Content-Type")
-        let tempFile = try await fileRepository.createFile(data: Data(), contentType: .multipart)
+        let tempFile = try await fileService.createFile(data: Data(), contentType: .multipart)
         let fileHandle = try FileHandle(forUpdating: tempFile.url)
         
         for item in content {
@@ -161,7 +163,7 @@ public extension APIServiceLiveValue {
         }
         
         let (data, response) = try await uploadSession.upload(for: request, fromFile: tempFile.url)
-        try await fileRepository.delete(file: tempFile)
+        try await fileService.delete(file: tempFile)
         return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
     }
     

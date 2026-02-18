@@ -8,7 +8,7 @@
 @preconcurrency import Combine
 import Dependencies
 import Foundation
-import Models
+import VLSharedModels
 
 public protocol CodableCacheService: Sendable {
     func save<T: Cacheable>(_ object: T, id: String, expiry: Date?) async throws
@@ -180,7 +180,7 @@ actor CodableCacheServiceLiveValue: CodableCacheService {
 }
 
 final class CodableCachServicePreviewValue: CodableCacheService {
-    func save<T>(_ object: T, id: String) async throws where T : Models.Cacheable {}
+    func save<T>(_ object: T, id: String) async throws where T : Cacheable {}
     func save<T: Cacheable>(_ object: T, id: String, expiry: Date?) async throws {}
     func update<T: Cacheable>(id: String, update: (inout T) -> Void) async throws {}
     func updateAll<T: Cacheable>(update: (inout T) -> Void) async throws {}

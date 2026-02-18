@@ -5,9 +5,9 @@
 //  Created by BJ Beecher on 9/18/23.
 //
 
-import Extensions
+import VLExtensions
 import Foundation
-import Models
+import VLSharedModels
 
 public enum HTTPMethod {
     case get
