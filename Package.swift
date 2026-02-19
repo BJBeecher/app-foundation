@@ -28,6 +28,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
+        .package(url: "https://github.com/pointfreeco/swift-composable-architecture.git", .upToNextMajor(from: "1.23.1"))
     ],
     targets: [
         .target(name: "VLExtensions", path: "Sources/Extensions"),
@@ -103,7 +104,13 @@ let package = Package(
         ),
         .target(
             name: "VLViews",
-            dependencies: [],
+            dependencies: [
+                .target(name: "VLData"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+                .target(name: "VLLogging"),
+                .target(name: "VLSharedModels"),
+            ],
             path: "Sources/Views"
         )
     ]

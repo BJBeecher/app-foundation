@@ -156,7 +156,8 @@ public extension APIServiceLiveValue {
     
     @discardableResult
     func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output {
-        let request = try endpoint.request()
+        let intercepted = try await intercept(endpoint: endpoint)
+        let request = try intercepted.request()
         let (data, response) = try await session.data(for: request)
         return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
     }
