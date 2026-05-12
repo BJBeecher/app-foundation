@@ -3,5 +3,7 @@
 @_exported import VLFiles
 @_exported import VLHTTP
 @_exported import VLLogging
+@_exported import VLKeychain
+@_exported import VLPhotos
 @_exported import VLRouter
 @_exported import VLUtilities

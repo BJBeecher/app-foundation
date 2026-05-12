@@ -7,6 +7,7 @@
 
 import VLExtensions
 import Foundation
+import VLFiles
 import VLSharedModels
 
 public enum HTTPMethod {
@@ -32,83 +33,100 @@ public enum HTTPMethod {
     }
 }
 
+public enum HTTPBody: @unchecked Sendable {
+    case json(any Encodable & Sendable, encoder: JSONEncoder = .init())
+    case jsonParameters([String: Any])
+    case multipart(MultipartBody)
+}
+
+public extension HTTPBody {
+    static func multipart(_ content: [MultipartBody.Content]) -> Self {
+        .multipart(.init(content: content))
+    }
+}
+
 public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
     public var url: URL
     public var method: HTTPMethod
-    public var body: Encodable?
-    public var bodyParameters: [String: Any]?
+    public var body: HTTPBody?
     public var headers: [String: String]
     public var queryParameters: [URLQueryItem]?
-    public var encoder: JSONEncoder
     public var decoder: JSONDecoder
     public let intecepters: [HTTPServiceRequestInteceptor]
 
     public var requestKey: String? {
-        guard let request = try? request() else {
+        guard let url = requestURL?.absoluteString else {
             return nil
         }
-        
-        let method = request.httpMethod ?? ""
-        let url = request.url?.absoluteString ?? ""
-        let headers = request.allHTTPHeaderFields?
+
+        let headers = headers
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "&") ?? ""
-        let body = request.httpBody?.base64EncodedString() ?? ""
+            .joined(separator: "&")
+        let body = requestKeyBody ?? ""
         
-        return "\(method)|\(url)|\(headers)|\(body)"
+        return "\(method.value)|\(url)|\(headers)|\(body)"
+    }
+
+    var requestURL: URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.queryItems = queryParameters
+        return components.url
     }
     
     public init(
         url: URL,
         method: HTTPMethod = .get,
-        body: Encodable? = nil,
-        bodyParameters: [String: Any]? = nil,
+        body: HTTPBody? = nil,
         headers: [String : String] = [:],
         queryParameters: [URLQueryItem]? = nil,
-        encoder: JSONEncoder = .init(),
         decoder: JSONDecoder = .init(),
         inteceptors: [HTTPServiceRequestInteceptor] = []
     ) {
         self.url = url
         self.method = method
         self.body = body
-        self.bodyParameters = bodyParameters
         self.headers = headers
         self.queryParameters = queryParameters
-        self.encoder = encoder
         self.decoder = decoder
         self.intecepters = inteceptors
     }
+
+    public init(
+        url: URL,
+        method: HTTPMethod = .get,
+        body: (any Encodable & Sendable)?,
+        headers: [String : String] = [:],
+        queryParameters: [URLQueryItem]? = nil,
+        decoder: JSONDecoder = .init(),
+        inteceptors: [HTTPServiceRequestInteceptor] = []
+    ) {
+        self.init(
+            url: url,
+            method: method,
+            body: body.map { .json($0) },
+            headers: headers,
+            queryParameters: queryParameters,
+            decoder: decoder,
+            inteceptors: inteceptors
+        )
+    }
     
-    public func request() throws -> URLRequest {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            throw GenericError(message: "Could not generate URLComponents for \(url)")
+    private var requestKeyBody: String? {
+        guard let body else { return nil }
+
+        switch body {
+        case .json(let object, let encoder):
+            return try? encoder.encode(object).base64EncodedString()
+        case .jsonParameters(let parameters):
+            return try? JSONSerialization.data(withJSONObject: parameters).base64EncodedString()
+        case .multipart(let multipart):
+            return multipart.content
+                .map(\.name)
+                .joined(separator: "&")
         }
-        
-        components.queryItems = self.queryParameters
-        
-        guard let url = components.url else {
-            throw GenericError(message: "Bad components: \(components)")
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method.value
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(TimeZone.current.identifier, forHTTPHeaderField: "Timezone")
-        
-        for header in self.headers {
-            request.addValue(header.value, forHTTPHeaderField: header.key)
-        }
-        
-        if let bodyParameters {
-            request.httpBody = try JSONSerialization.data(withJSONObject: bodyParameters)
-        }
-        
-        if let body {
-            request.httpBody = try encoder.encode(body)
-        }
-        
-        return request
     }
 }

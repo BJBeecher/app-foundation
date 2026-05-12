@@ -24,23 +24,7 @@ public protocol HTTPService: Sendable {
     
     func data(from url: URL) async throws -> Data
     func download(from endpoint: URL) async throws -> URL
-    func upload(to endpoint: URL, from file: File) async throws
-    @discardableResult func multipartUpload<Output: Decodable>(
-        to endpoint: HTTPEndpoint<Output>,
-        content: [MultipartContent],
-        onProgress: @escaping @Sendable (TaskProgress) -> Void
-    ) async throws -> Output
-    @discardableResult func multipartUpload<Output: Decodable>(to endpoint: HTTPEndpoint<Output>, content: [MultipartContent]) async throws -> Output
     @discardableResult func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output
-}
-
-public extension HTTPService {
-    @discardableResult func multipartUpload<Output: Decodable>(
-        to endpoint: HTTPEndpoint<Output>,
-        content: [MultipartContent]
-    ) async throws -> Output {
-        try await multipartUpload(to: endpoint, content: content, onProgress: { _ in })
-    }
 }
 
 public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
@@ -67,82 +51,10 @@ public extension APIServiceLiveValue {
         return url
     }
     
-    func upload(to endpoint: URL, from file: File) async throws {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "PUT"
-        request.setValue(file.contentType.headerValue, forHTTPHeaderField: "Content-Type")
-        let (_, response) = try await session.upload(for: request, fromFile: file.url)
-        try checkForServerError(response: response)
-    }
-    
     func data(from url: URL) async throws -> Data {
         let (data, response) = try await session.data(from: url)
         try checkForServerError(response: response)
         return data
-    }
-    
-    func multipartUpload<Output: Decodable>(
-        to endpoint: HTTPEndpoint<Output>,
-        content: [MultipartContent],
-        onProgress: @escaping @Sendable (TaskProgress) -> Void
-    ) async throws -> Output {
-        let intercepted = try await intercept(endpoint: endpoint)
-        var request = try intercepted.request()
-        let multipartBoundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(multipartBoundary)", forHTTPHeaderField: "Content-Type")
-        let tempFile = try await fileService.createFile(data: Data(), contentType: .multipart)
-        let fileHandle = try FileHandle(forUpdating: tempFile.url)
-        
-        for item in content {
-            var header = ""
-            header.append("--\(multipartBoundary)\r\n")
-            header.append("Content-Disposition: form-data; name=\"\(item.name)\"")
-            
-            if case .file(let file) = item.source {
-                header.append("; filename=\"\(file.url.lastPathComponent)\"\r\n")
-            } else {
-                header.append("\r\n")
-            }
-            
-            header.append("Content-Type: \(item.contentType)\r\n\r\n")
-            
-            if let headerData = header.data(using: .utf8) {
-                try fileHandle.write(contentsOf: headerData)
-            }
-            
-            let contentData: Data = switch item.source {
-            case .file(let file):
-                try Data(contentsOf: file.url)
-            case .json(let object):
-                try endpoint.encoder.encode(object)
-            }
-            
-            try fileHandle.write(contentsOf: contentData)
-            
-            if let lineBreak = "\r\n".data(using: .utf8) {
-                try fileHandle.write(contentsOf: lineBreak)
-            }
-        }
-        
-        if let closing = "--\(multipartBoundary)--\r\n".data(using: .utf8) {
-            try fileHandle.write(contentsOf: closing)
-        }
-        
-        try fileHandle.close()
-        
-        let uploadDelegate = UploadTaskDelegate()
-        let progressCancellable = uploadDelegate.progressPublisher.sink { progress in
-            onProgress(progress)
-        }
-        let uploadSession = URLSession(configuration: .default, delegate: uploadDelegate, delegateQueue: nil)
-        defer {
-            progressCancellable.cancel()
-            uploadSession.invalidateAndCancel()
-        }
-        
-        let (data, response) = try await uploadSession.upload(for: request, fromFile: tempFile.url)
-        try await fileService.delete(file: tempFile)
-        return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
     }
     
     func callLoadState<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async -> LoadState<Output> {
@@ -157,7 +69,21 @@ public extension APIServiceLiveValue {
     @discardableResult
     func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output {
         let intercepted = try await intercept(endpoint: endpoint)
-        let request = try intercepted.request()
+        let request = try request(for: intercepted)
+
+        if case .multipart(let multipart) = intercepted.body {
+            let multipartFile = try await multipart.makeBodyFile()
+
+            do {
+                let (data, response) = try await session.upload(for: request, fromFile: multipartFile.url)
+                try await fileService.delete(file: multipartFile)
+                return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+            } catch {
+                try? await fileService.delete(file: multipartFile)
+                throw error
+            }
+        }
+
         let (data, response) = try await session.data(for: request)
         return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
     }
@@ -166,6 +92,34 @@ public extension APIServiceLiveValue {
 // MARK: Private methods
 
 private extension APIServiceLiveValue {
+    func request<Output: Decodable>(for endpoint: HTTPEndpoint<Output>) throws -> URLRequest {
+        guard let url = endpoint.requestURL else {
+            throw GenericError(message: "Bad endpoint url: \(endpoint.url)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = endpoint.method.value
+
+        for header in endpoint.headers {
+            request.addValue(header.value, forHTTPHeaderField: header.key)
+        }
+
+        if let body = endpoint.body {
+            switch body {
+            case .json(let object, let encoder):
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try encoder.encode(object)
+            case .jsonParameters(let parameters):
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+            case .multipart(let multipart):
+                request.setValue("multipart/form-data; boundary=\(multipart.boundary)", forHTTPHeaderField: "Content-Type")
+            }
+        }
+
+        return request
+    }
+
     func intercept<T: Decodable>(endpoint:  HTTPEndpoint<T>) async throws -> HTTPEndpoint<T> {
         var new = endpoint
         
@@ -207,6 +161,7 @@ private extension APIServiceLiveValue {
             return try decoder.decode(Output.self, from: data)
         }
     }
+
 }
 
 // MARK: Preview
@@ -217,16 +172,6 @@ final class APIServicePreviewValue: HTTPService, @unchecked Sendable {
     }
     
     let unauthorizedPublisher = PassthroughSubject<Void, Never>()
-    
-    func upload(to endpoint: URL, from file: File) async throws {}
-    
-    func multipartUpload<Output>(
-        to endpoint: HTTPEndpoint<Output>,
-        content: [MultipartContent],
-        onProgress: @escaping @Sendable (TaskProgress) -> Void
-    ) async throws -> Output where Output : Decodable {
-        throw GenericError(message: "Not in use")
-    }
     
     func download(from endpoint: URL) async throws -> URL {
         throw GenericError(message: "Not in use")

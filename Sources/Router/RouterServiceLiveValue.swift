@@ -81,7 +81,10 @@ public actor RouterServiceLiveValue<Destination: RouterDestination>: Sendable {
     public func presentAlert(_ alert: PopupAlert) async -> AlertButton {
         await withCheckedContinuation { continuation in
             var alert = alert
+            let state = AlertContinuationState()
             alert.setTappedHandler { button in
+                guard state.resume() else { return }
+
                 continuation.resume(returning: button)
             }
 
@@ -94,7 +97,8 @@ public actor RouterServiceLiveValue<Destination: RouterDestination>: Sendable {
     public func dismissAlert() {
         var alerts = alertSubject.value
         guard !alerts.isEmpty else { return }
-        alerts.removeLast()
+        let alert = alerts.removeLast()
+        alert.tapped?(.dismissed)
         alertSubject.send(alerts)
     }
 
@@ -108,6 +112,20 @@ public actor RouterServiceLiveValue<Destination: RouterDestination>: Sendable {
 
     public func hideLoader() {
         loadingSubject.send(nil)
+    }
+}
+
+private final class AlertContinuationState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isResumed = false
+
+    func resume() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !isResumed else { return false }
+        isResumed = true
+        return true
     }
 }
 

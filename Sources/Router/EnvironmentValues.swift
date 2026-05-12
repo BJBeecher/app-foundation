@@ -8,5 +8,5 @@
 import SwiftUI
 
 public extension EnvironmentValues {
-    @Entry public var routerNamespace: Namespace.ID?
+    @Entry var routerNamespace: Namespace.ID?
 }

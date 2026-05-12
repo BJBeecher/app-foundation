@@ -46,9 +46,10 @@ public struct AlertButton: Equatable, Identifiable, Sendable {
         self.title = title
         self.role = role
     }
+
+    public static let dismissed = AlertButton(id: "dismissed", title: "Dismissed", role: .cancel)
 }
 
 public protocol RouterAlert: Equatable, Sendable {
     mutating func setTappedHandler(_ handler: @escaping @Sendable (AlertButton) -> Void)
 }
-
