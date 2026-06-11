@@ -19,6 +19,7 @@ public protocol DataService: Sendable {
     func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String) async throws
     @discardableResult
     func send<T: DataAccessObject>(endpoint: DataAccessor<T>) async throws -> T
+    func updateCache<T: DataAccessObject>(accessor: DataAccessor<T>, update: @Sendable (inout T) -> Void) async throws
     func clearCache<T: DataAccessObject>(accessor: DataAccessor<T>)
 }
 
@@ -63,6 +64,11 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
                 loggingService.error(error.localizedDescription)
             }
         }
+    }
+
+    func updateCache<T: DataAccessObject>(accessor: DataAccessor<T>, update: @Sendable (inout T) -> Void) async throws {
+        guard let cacheId = accessor.cacheId else { return }
+        try await codableStorageService.update(id: cacheId, update: update)
     }
     
     func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String) async throws {
@@ -112,6 +118,7 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
 
 final class DataServicePreviewValue: DataService {
     func loadMore<T>(endpoint: DataAccessor<T>, cursor: String) async throws where T : Paginateable {}
+    func updateCache<T>(accessor: DataAccessor<T>, update: @Sendable (inout T) -> Void) async throws where T : DataAccessObject {}
     
     func observe<T: DataAccessObject>(id: String) -> AsyncStream<T> {
         AsyncStream { $0.yield(.sample) }

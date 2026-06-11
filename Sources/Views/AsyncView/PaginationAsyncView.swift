@@ -56,32 +56,35 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
                     .padding(24)
                 
             case .success(let ui):
-                if let binding = Binding($store.value) {
-                    LazyVStack(spacing: 16) {
-                        content(binding)
-                        
-                        if let cursor = ui.cursor, !loadingMore {
-                            ProgressView()
-                                .onAppear {
-                                    Task { @MainActor in
-                                        loadingMore = true
-                                        
-                                        do {
-                                            try await dataAccessService.loadMore(endpoint: store.accessor, cursor: cursor)
-                                            loadingMore = false
-                                        } catch {
-                                            loggingService.error(error.localizedDescription)
+                LazyVStack(spacing: 16) {
+                    if let binding = Binding($store.value) {
+                        if ui.items.isEmpty {
+                            ZStack {
+                                content(binding)
+                                
+                                ContentUnavailableView(
+                                    "Nothing here yet",
+                                    systemImage: "tray"
+                                )
+                            }.containerRelativeFrame(.vertical)
+                        } else {
+                            content(binding)
+                            
+                            if let cursor = ui.cursor, !loadingMore {
+                                ProgressView()
+                                    .onAppear {
+                                        Task { @MainActor in
+                                            loadingMore = true
+                                            
+                                            do {
+                                                try await dataAccessService.loadMore(endpoint: store.accessor, cursor: cursor)
+                                                loadingMore = false
+                                            } catch {
+                                                loggingService.error(error.localizedDescription)
+                                            }
                                         }
                                     }
-                                }
-                        }
-                    }.overlay {
-                        if ui.items.isEmpty {
-                            ContentUnavailableView(
-                                "Nothing here yet",
-                                systemImage: "tray"
-                            )
-                            .padding(.top, 100)
+                            }
                         }
                     }
                 }
@@ -93,7 +96,7 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
         .task {
             await store.send(.observe).finish()
         }

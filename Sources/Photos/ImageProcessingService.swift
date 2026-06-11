@@ -1,8 +1,10 @@
 import Dependencies
 import Foundation
 import ImageIO
-import SwiftUI
 import PhotosUI
+import SDWebImageWebPCoder
+import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import VLFiles
 import VLSharedModels
@@ -10,7 +12,14 @@ import VLUtilities
 
 public protocol ImageProcessingService: Sendable {
     func processImageData(_ data: Data) async throws -> ProcessedImage
+    func processImageData(_ data: Data, outputFormat: ImageProcessingOutputFormat) async throws -> ProcessedImage
     func processPickerItem(_ item: PhotosPickerItem) async throws -> ProcessedImage
+    func processPickerItem(_ item: PhotosPickerItem, outputFormat: ImageProcessingOutputFormat) async throws -> ProcessedImage
+}
+
+public enum ImageProcessingOutputFormat: Sendable {
+    case jpeg
+    case webP
 }
 
 public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unchecked Sendable {
@@ -21,14 +30,22 @@ public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unc
     private let compressionQuality: CGFloat = 0.8
     
     public func processPickerItem(_ item: PhotosPickerItem) async throws -> ProcessedImage {
+        try await processPickerItem(item, outputFormat: .jpeg)
+    }
+
+    public func processPickerItem(_ item: PhotosPickerItem, outputFormat: ImageProcessingOutputFormat) async throws -> ProcessedImage {
         guard let data = try await item.loadTransferable(type: Data.self) else {
             throw GenericError(message: "Unable to load transferable of type data")
         }
         
-        return try await processImageData(data)
+        return try await processImageData(data, outputFormat: outputFormat)
     }
 
     public func processImageData(_ data: Data) async throws -> ProcessedImage {
+        try await processImageData(data, outputFormat: .jpeg)
+    }
+
+    public func processImageData(_ data: Data, outputFormat: ImageProcessingOutputFormat) async throws -> ProcessedImage {
         await semaphore.acquire()
         defer { Task { await semaphore.release() } }
 
@@ -59,16 +76,31 @@ public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unc
             throw GenericError(message: "Unable to decode image data")
         }
 
-        let jpegData = try makeJPEGData(from: image)
-        let file = try await fileService.createFile(data: jpegData, contentType: .jpeg)
+        let processedData = try makeImageData(from: image, outputFormat: outputFormat)
+        let contentType: ContentType = switch outputFormat {
+        case .jpeg:
+            .jpeg
+        case .webP:
+            .webP
+        }
+        let file = try await fileService.createFile(data: processedData, contentType: contentType)
 
         return ProcessedImage(
             file: file,
-            byteSize: jpegData.count,
+            byteSize: processedData.count,
             width: Double(image.width),
             height: Double(image.height),
             metadata: metadata
         )
+    }
+
+    private func makeImageData(from image: CGImage, outputFormat: ImageProcessingOutputFormat) throws -> Data {
+        switch outputFormat {
+        case .jpeg:
+            return try makeJPEGData(from: image)
+        case .webP:
+            return try makeWebPData(from: image)
+        }
     }
 
     private func makeJPEGData(from image: CGImage) throws -> Data {
@@ -94,6 +126,20 @@ public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unc
         }
 
         return data as Data
+    }
+
+    private func makeWebPData(from image: CGImage) throws -> Data {
+        let uiImage = UIImage(cgImage: image)
+
+        guard let webPData = SDImageWebPCoder.shared.encodedData(
+            with: uiImage,
+            format: .webP,
+            options: [.encodeCompressionQuality: compressionQuality]
+        ) else {
+            throw GenericError(message: "Unable to format image data")
+        }
+
+        return webPData
     }
 
     private func extractMetadata(from properties: [CFString: Any]?) -> ProcessedImage.Metadata {

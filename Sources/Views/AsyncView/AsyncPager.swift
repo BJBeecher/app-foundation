@@ -54,31 +54,38 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
                     .padding(24)
                 
             case .success(let ui):
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(ui.items) { item in
-                            content(item)
-                                
-                            if let cursor = ui.cursor {
-                                ProgressView()
-                                    .onAppear {
-                                        Task { @MainActor in
-                                            do {
-                                                try await dataService.loadMore(endpoint: store.accessor, cursor: cursor)
-                                            } catch {
-                                                loggingService.error(error.localizedDescription)
+                if ui.items.isEmpty {
+                    ContentUnavailableView(
+                        "Nothing here yet",
+                        systemImage: "tray"
+                    )
+                } else {
+                    ScrollView(.horizontal) {
+                        LazyHStack(spacing: 0) {
+                            ForEach(ui.items) { item in
+                                content(item)
+
+                                if let cursor = ui.cursor {
+                                    ProgressView()
+                                        .onAppear {
+                                            Task { @MainActor in
+                                                do {
+                                                    try await dataService.loadMore(endpoint: store.accessor, cursor: cursor)
+                                                } catch {
+                                                    loggingService.error(error.localizedDescription)
+                                                }
                                             }
                                         }
-                                    }
+                                }
                             }
+                            .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
                         }
-                        .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
+                        .scrollTargetLayout()
                     }
-                    .scrollTargetLayout()
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: selectedItem)
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: selectedItem)
                 
             case .failure:
                 ContentUnavailableView(

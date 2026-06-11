@@ -29,7 +29,6 @@ public protocol HTTPService: Sendable {
 
 public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
     @Dependency(\.fileService) private var fileService
-    @Dependency(\.loggingService) private var loggingService
     
     private let session: URLSession
     public let unauthorizedPublisher = PassthroughSubject<Void, Never>()
@@ -161,7 +160,6 @@ private extension APIServiceLiveValue {
             return try decoder.decode(Output.self, from: data)
         }
     }
-
 }
 
 // MARK: Preview

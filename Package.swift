@@ -29,10 +29,13 @@ let package = Package(
         .library(name: "VLKeychain", targets: ["VLKeychain"]),
         .library(name: "VLUtilities", targets: ["VLUtilities"]),
         .library(name: "VLRouter", targets: ["VLRouter"]),
+        .library(name: "VLViews", targets: ["VLViews"]),
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
-        .package(url: "https://github.com/pointfreeco/swift-composable-architecture.git", .upToNextMajor(from: "1.23.1"))
+        .package(url: "https://github.com/pointfreeco/swift-composable-architecture.git", .upToNextMajor(from: "1.23.1")),
+        .package(url: "https://github.com/onevcat/Kingfisher.git", .upToNextMajor(from: "8.5.0")),
+        .package(url: "https://github.com/SDWebImage/SDWebImageWebPCoder.git", .upToNextMajor(from: "0.3.0"))
     ],
     targets: [
         .target(name: "VLExtensions", path: "Sources/Extensions"),
@@ -72,6 +75,7 @@ let package = Package(
                 .target(name: "VLFiles"),
                 .target(name: "VLSharedModels"),
                 .target(name: "VLUtilities"),
+                "SDWebImageWebPCoder",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             path: "Sources/Photos"
@@ -136,6 +140,7 @@ let package = Package(
             name: "VLViews",
             dependencies: [
                 .target(name: "VLData"),
+                "Kingfisher",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
                 .target(name: "VLLogging"),
