@@ -70,7 +70,12 @@ public extension APIServiceLiveValue {
         let intercepted = try await intercept(endpoint: endpoint)
         let request = try request(for: intercepted)
 
-        if case .multipart(let multipart) = intercepted.body {
+        switch intercepted.body {
+        case .some(.file(let file)):
+            let (data, response) = try await session.upload(for: request, fromFile: file.url)
+            return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+
+        case .some(.multipart(let multipart)):
             let multipartFile = try await multipart.makeBodyFile()
 
             do {
@@ -81,10 +86,11 @@ public extension APIServiceLiveValue {
                 try? await fileService.delete(file: multipartFile)
                 throw error
             }
-        }
 
-        let (data, response) = try await session.data(for: request)
-        return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+        case .some(.json), .some(.jsonParameters), nil:
+            let (data, response) = try await session.data(for: request)
+            return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+        }
     }
 }
 
@@ -105,6 +111,8 @@ private extension APIServiceLiveValue {
 
         if let body = endpoint.body {
             switch body {
+            case .file(let file):
+                request.setValue(file.contentType.headerValue, forHTTPHeaderField: "Content-Type")
             case .json(let object, let encoder):
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try encoder.encode(object)

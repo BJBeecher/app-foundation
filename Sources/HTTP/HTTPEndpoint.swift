@@ -34,6 +34,7 @@ public enum HTTPMethod {
 }
 
 public enum HTTPBody: @unchecked Sendable {
+    case file(File)
     case json(any Encodable & Sendable, encoder: JSONEncoder = .init())
     case jsonParameters([String: Any])
     case multipart(MultipartBody)
@@ -119,6 +120,8 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
         guard let body else { return nil }
 
         switch body {
+        case .file(let file):
+            return file.url.lastPathComponent
         case .json(let object, let encoder):
             return try? encoder.encode(object).base64EncodedString()
         case .jsonParameters(let parameters):
