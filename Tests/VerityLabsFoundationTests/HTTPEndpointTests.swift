@@ -32,6 +32,31 @@ func testRequestBuildsMethodHeadersQueryAndBody() throws {
 }
 
 @Test
+func testRequestPreservesExistingQueryWhenNoQueryParametersAreProvided() throws {
+    let endpoint = HTTPEndpoint<Output>(
+        url: URL(string: "https://example.com/upload?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc123")!,
+        method: .put
+    )
+
+    let request = try endpoint.request()
+
+    #expect(request.url?.absoluteString == "https://example.com/upload?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc123")
+}
+
+@Test
+func testRequestAppendsQueryParametersToExistingQuery() throws {
+    let endpoint = HTTPEndpoint<Output>(
+        url: URL(string: "https://example.com/upload?X-Amz-Algorithm=AWS4-HMAC-SHA256")!,
+        method: .put,
+        queryParameters: [URLQueryItem(name: "partNumber", value: "1")]
+    )
+
+    let request = try endpoint.request()
+
+    #expect(request.url?.absoluteString == "https://example.com/upload?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=1")
+}
+
+@Test
 func testRequestKeyIsStableForEquivalentRequests() {
     let url = URL(string: "https://example.com/v1/items")!
 

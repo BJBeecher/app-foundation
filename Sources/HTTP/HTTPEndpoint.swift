@@ -74,7 +74,10 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
             return nil
         }
 
-        components.queryItems = queryParameters
+        if let queryParameters {
+            components.queryItems = (components.queryItems ?? []) + queryParameters
+        }
+
         return components.url
     }
     
