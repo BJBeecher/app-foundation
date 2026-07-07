@@ -50,22 +50,31 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
         return self
     }
 
+    @ViewBuilder
     private func image(size: CGSize) -> some View {
-        KFImage(url)
-            .cacheOriginalImage()
-            .requestModifier(requestModifier)
-            .backgroundDecode()
-            .setProcessor(DownsamplingImageProcessor(size: CGSize(width: size.width * scale, height: size.height * scale)))
-            .resizable()
-            .onFailureView {
-                failureView?()
+        if let url {
+            KFImage(url)
+                .cacheOriginalImage()
+                .requestModifier(requestModifier)
+                .backgroundDecode()
+                .setProcessor(DownsamplingImageProcessor(size: CGSize(width: size.width * scale, height: size.height * scale)))
+                .resizable()
+                .onFailureView {
+                    failureView?()
+                }
+                .placeholder {
+                    placeholder?()
+                }
+                .aspectRatio(contentMode: contentMode)
+                .frame(width: size.width, height: size.height)
+                .clipped()
+                .contentShape(Rectangle())
+        } else {
+            if let placeholder {
+                placeholder()
+                    .frame(width: size.width, height: size.height)
+                    .contentShape(Rectangle())
             }
-            .placeholder {
-                placeholder?()
-            }
-            .aspectRatio(contentMode: contentMode)
-            .frame(width: size.width, height: size.height)
-            .clipped()
-            .contentShape(Rectangle())
+        }
     }
 }
