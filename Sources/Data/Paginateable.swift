@@ -7,6 +7,11 @@
 
 import Foundation
 
+public enum PaginationDirection: Sendable, Equatable {
+    case append
+    case prepend
+}
+
 public protocol Paginateable: DataAccessObject {
     associatedtype Item: Identifiable where Item.ID == UUID
     

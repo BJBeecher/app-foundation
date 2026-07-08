@@ -17,6 +17,7 @@ public protocol DataService: Sendable {
     @discardableResult
     func load<T: DataAccessObject>(endpoint: DataAccessor<T>, refresh: Bool) async throws -> T
     func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String) async throws
+    func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String, direction: PaginationDirection) async throws
     @discardableResult
     func send<T: DataAccessObject>(endpoint: DataAccessor<T>) async throws -> T
     func updateCache<T: DataAccessObject>(accessor: DataAccessor<T>, update: @Sendable (inout T) -> Void) async throws
@@ -71,7 +72,7 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
         try await codableStorageService.update(id: cacheId, update: update)
     }
     
-    func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String) async throws {
+    func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String, direction: PaginationDirection) async throws {
         guard let cacheId = endpoint.cacheId else {
             return
         }
@@ -84,7 +85,12 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
         let object = try await send(endpoint: newEndpoint)
         try await codableStorageService.update(id: cacheId) { (cached: inout T) in
             var newObject = object
-            newObject.items = cached.items + object.items
+            switch direction {
+            case .append:
+                newObject.items = cached.items + object.items
+            case .prepend:
+                newObject.items = object.items + cached.items
+            }
             cached = newObject
         }
     }
@@ -117,7 +123,7 @@ final class DataServiceLiveValue: DataService, @unchecked Sendable {
 }
 
 final class DataServicePreviewValue: DataService {
-    func loadMore<T>(endpoint: DataAccessor<T>, cursor: String) async throws where T : Paginateable {}
+    func loadMore<T>(endpoint: DataAccessor<T>, cursor: String, direction: PaginationDirection) async throws where T : Paginateable {}
     func updateCache<T>(accessor: DataAccessor<T>, update: @Sendable (inout T) -> Void) async throws where T : DataAccessObject {}
     
     func observe<T: DataAccessObject>(id: String) -> AsyncStream<T> {
@@ -133,6 +139,16 @@ final class DataServicePreviewValue: DataService {
     }
     
     func clearCache<T>(accessor: DataAccessor<T>) where T : DataAccessObject {}
+}
+
+public extension DataService {
+    func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String) async throws {
+        try await loadMore(endpoint: endpoint, cursor: cursor, direction: .append)
+    }
+
+    func loadMore<T: Paginateable>(endpoint: DataAccessor<T>, cursor: String, direction: PaginationDirection) async throws {
+        try await loadMore(endpoint: endpoint, cursor: cursor)
+    }
 }
 
 public enum DataAccessServiceKey: DependencyKey {

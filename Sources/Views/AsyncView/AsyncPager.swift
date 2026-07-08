@@ -17,12 +17,15 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
     
     @State private var store: StoreOf<AsyncFeature<UI>>
     @State private var internalSelectedItem: UI.Item.ID?
+    @State private var loadingMore = false
     private var externalSelectedItem: Binding<UI.Item.ID?>?
+    private let paginationDirection: PaginationDirection
     
     private let content: (UI.Item) -> Content
     
     public init(
         endpoint: DataAccessor<UI>,
+        direction: PaginationDirection = .append,
         initialPosition: UI.Item.ID? = nil,
         selectedItem: Binding<UI.Item.ID?>? = nil,
         @ViewBuilder content: @escaping (UI.Item) -> Content
@@ -32,6 +35,7 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
         })
         self._internalSelectedItem = State(initialValue: initialPosition)
         self.externalSelectedItem = selectedItem
+        self.paginationDirection = direction
         self.content = content
     }
     
@@ -44,6 +48,7 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
             switch store.loadState {
             case .idle:
                 ProgressView()
+                    .tint(.secondary)
                     .padding(24)
                     .onAppear {
                         store.send(.load(refresh: false))
@@ -51,6 +56,7 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
                 
             case .loading:
                 ProgressView()
+                    .tint(.secondary)
                     .padding(24)
                 
             case .success(let ui):
@@ -62,23 +68,18 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
                 } else {
                     ScrollView(.horizontal) {
                         LazyHStack(spacing: 0) {
+                            if paginationDirection == .prepend {
+                                loadingMoreView(cursor: ui.cursor)
+                            }
+
                             ForEach(ui.items) { item in
                                 content(item)
-
-                                if let cursor = ui.cursor {
-                                    ProgressView()
-                                        .onAppear {
-                                            Task { @MainActor in
-                                                do {
-                                                    try await dataService.loadMore(endpoint: store.accessor, cursor: cursor)
-                                                } catch {
-                                                    loggingService.error(error.localizedDescription)
-                                                }
-                                            }
-                                        }
-                                }
                             }
                             .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
+
+                            if paginationDirection == .append {
+                                loadingMoreView(cursor: ui.cursor)
+                            }
                         }
                         .scrollTargetLayout()
                     }
@@ -97,6 +98,26 @@ public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: I
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             await store.send(.observe).finish()
+        }
+    }
+
+    @ViewBuilder
+    private func loadingMoreView(cursor: String?) -> some View {
+        if let cursor, !loadingMore {
+            ProgressView()
+                .tint(.secondary)
+                .onAppear {
+                    Task { @MainActor in
+                        loadingMore = true
+                        defer { loadingMore = false }
+
+                        do {
+                            try await dataService.loadMore(endpoint: store.accessor, cursor: cursor, direction: paginationDirection)
+                        } catch {
+                            loggingService.error(error.localizedDescription)
+                        }
+                    }
+                }
         }
     }
 }

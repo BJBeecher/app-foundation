@@ -18,25 +18,30 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
     @State private var store: StoreOf<AsyncFeature<UI>>
     @ViewBuilder let content: (Binding<UI>) -> Content
     @State private var loadingMore = false
+    private let paginationDirection: PaginationDirection
     
     public init(
         endpoint: DataAccessor<UI>,
+        direction: PaginationDirection = .append,
         @ViewBuilder content: @escaping (Binding<UI>) -> Content
     ) {
         self.store = StoreOf<AsyncFeature<UI>>(initialState: .init(accessor: endpoint)) {
             AsyncFeature()
         }
+        self.paginationDirection = direction
         
         self.content = content
     }
     
     public init(
         endpoint: DataAccessor<UI>,
+        direction: PaginationDirection = .append,
         @ViewBuilder content: @escaping (UI) -> Content
     ) {
         self.store = StoreOf<AsyncFeature<UI>>(initialState: .init(accessor: endpoint)) {
             AsyncFeature()
         }
+        self.paginationDirection = direction
         
         self.content = { content($0.wrappedValue) }
     }
@@ -46,6 +51,7 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
             switch store.loadState {
             case .idle:
                 ProgressView()
+                    .tint(.secondary)
                     .padding(24)
                     .onAppear {
                         store.send(.load(refresh: false))
@@ -53,6 +59,7 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
                 
             case .loading:
                 ProgressView()
+                    .tint(.secondary)
                     .padding(24)
                 
             case .success(let ui):
@@ -61,29 +68,21 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
                         if ui.items.isEmpty {
                             ZStack {
                                 content(binding)
-                                
+
                                 ContentUnavailableView(
                                     "Nothing here yet",
                                     systemImage: "tray"
                                 )
                             }.containerRelativeFrame(.vertical)
                         } else {
+                            if paginationDirection == .prepend {
+                                loadingMoreView(cursor: ui.cursor)
+                            }
+
                             content(binding)
                             
-                            if let cursor = ui.cursor, !loadingMore {
-                                ProgressView()
-                                    .onAppear {
-                                        Task { @MainActor in
-                                            loadingMore = true
-                                            
-                                            do {
-                                                try await dataAccessService.loadMore(endpoint: store.accessor, cursor: cursor)
-                                                loadingMore = false
-                                            } catch {
-                                                loggingService.error(error.localizedDescription)
-                                            }
-                                        }
-                                    }
+                            if paginationDirection == .append {
+                                loadingMoreView(cursor: ui.cursor)
                             }
                         }
                     }
@@ -99,6 +98,26 @@ public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
         .frame(maxWidth: .infinity)
         .task {
             await store.send(.observe).finish()
+        }
+    }
+
+    @ViewBuilder
+    private func loadingMoreView(cursor: String?) -> some View {
+        if let cursor, !loadingMore {
+            ProgressView()
+                .tint(.secondary)
+                .onAppear {
+                    Task { @MainActor in
+                        loadingMore = true
+                        defer { loadingMore = false }
+
+                        do {
+                            try await dataAccessService.loadMore(endpoint: store.accessor, cursor: cursor, direction: paginationDirection)
+                        } catch {
+                            loggingService.error(error.localizedDescription)
+                        }
+                    }
+                }
         }
     }
 }
