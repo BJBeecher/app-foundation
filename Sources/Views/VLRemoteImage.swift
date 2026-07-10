@@ -10,7 +10,6 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
 
     @State private var placeholder: (() -> AnyView)?
     @State private var failureView: (() -> AnyView)?
-    @State private var size: CGSize?
 
     public init(
         url: URL?,
@@ -23,21 +22,10 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
     }
 
     public var body: some View {
-        ZStack {
-            if let size {
-                image(size: size)
-            }
+        GeometryReader { proxy in
+            image(size: proxy.size)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay {
-            GeometryReader { proxy in
-                Color.clear.task(id: proxy.size) {
-                    withAnimation {
-                        self.size = proxy.size
-                    }
-                }
-            }
-        }
     }
 
     public func placeholder<Content: View>(@ViewBuilder _ content: @escaping () -> Content) -> Self {
@@ -52,12 +40,14 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
 
     @ViewBuilder
     private func image(size: CGSize) -> some View {
+        let downsamplingSize = downsamplingSize(for: size)
+
         if let url {
             KFImage(url)
                 .cacheOriginalImage()
                 .requestModifier(requestModifier)
                 .backgroundDecode()
-                .setProcessor(DownsamplingImageProcessor(size: CGSize(width: size.width * scale, height: size.height * scale)))
+                .setProcessor(DownsamplingImageProcessor(size: downsamplingSize))
                 .resizable()
                 .onFailureView {
                     failureView?()
@@ -76,5 +66,12 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
                     .contentShape(Rectangle())
             }
         }
+    }
+
+    private func downsamplingSize(for size: CGSize) -> CGSize {
+        CGSize(
+            width: ceil(max(size.width, 1) * scale),
+            height: ceil(max(size.height, 1) * scale)
+        )
     }
 }
