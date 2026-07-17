@@ -1,123 +1,128 @@
-//
-//  PaginationAsyncView.swift
-//  Albumo
-//
-//  Created by BJ Beecher on 11/21/25.
-//
-
-import ComposableArchitecture
-import Dependencies
-import VLData
-import VLLogging
 import SwiftUI
+import VLQuery
 
-public struct PaginationAsyncView<UI: Paginateable, Content: View>: View {
-    @Dependency(\.dataService) private var dataAccessService
-    @Dependency(\.loggingService) private var loggingService
-    
-    @State private var store: StoreOf<AsyncFeature<UI>>
-    @ViewBuilder let content: (Binding<UI>) -> Content
+public struct PaginationAsyncView<
+    Value: Codable & Sendable,
+    Item: Sendable,
+    Content: View
+>: View {
+    @Environment(\.queryClient) private var queryClient
+    @State private var failedCursor: String?
     @State private var loadingMore = false
+
+    private let pagination: PaginationConfiguration<Value, Item>
     private let paginationDirection: PaginationDirection
-    
+    private let content: (Binding<Value>) -> Content
+
     public init(
-        endpoint: DataAccessor<UI>,
+        pagination: PaginationConfiguration<Value, Item>,
         direction: PaginationDirection = .append,
-        @ViewBuilder content: @escaping (Binding<UI>) -> Content
+        @ViewBuilder content: @escaping (Binding<Value>) -> Content
     ) {
-        self.store = StoreOf<AsyncFeature<UI>>(initialState: .init(accessor: endpoint)) {
-            AsyncFeature()
-        }
+        self.pagination = pagination
         self.paginationDirection = direction
-        
         self.content = content
     }
-    
+
     public init(
-        endpoint: DataAccessor<UI>,
+        pagination: PaginationConfiguration<Value, Item>,
         direction: PaginationDirection = .append,
-        @ViewBuilder content: @escaping (UI) -> Content
+        @ViewBuilder content: @escaping (Value) -> Content
     ) {
-        self.store = StoreOf<AsyncFeature<UI>>(initialState: .init(accessor: endpoint)) {
-            AsyncFeature()
-        }
+        self.pagination = pagination
         self.paginationDirection = direction
-        
         self.content = { content($0.wrappedValue) }
     }
-    
+
     public var body: some View {
-        ZStack {
-            switch store.loadState {
-            case .idle:
-                ProgressView()
-                    .tint(.secondary)
-                    .padding(24)
-                    .onAppear {
-                        store.send(.load(refresh: false))
-                    }
-                
-            case .loading:
-                ProgressView()
-                    .tint(.secondary)
-                    .padding(24)
-                
-            case .success(let ui):
-                LazyVStack(spacing: 16) {
-                    if let binding = Binding($store.value) {
-                        if ui.items.isEmpty {
-                            ZStack {
+        QueryView(pagination.initial) { snapshot in
+            ZStack {
+                switch snapshot.status {
+                case .pending:
+                    ProgressView()
+                        .tint(.secondary)
+                        .padding(24)
+                case .success:
+                    if let value = snapshot.data {
+                        LazyVStack(spacing: 16) {
+                            let binding = Binding(
+                                get: { value },
+                                set: { value in
+                                    Task {
+                                        await queryClient.setQueryData(key: pagination.initial.key, value)
+                                    }
+                                }
+                            )
+
+                            if pagination.items(value).isEmpty {
+                                ZStack {
+                                    content(binding)
+                                    ContentUnavailableView(
+                                        "Nothing here yet",
+                                        systemImage: "tray"
+                                    )
+                                }
+                                .containerRelativeFrame(.vertical)
+                            } else {
+                                if paginationDirection == .prepend {
+                                    loadingMoreView(cursor: pagination.cursor(value))
+                                }
+
                                 content(binding)
 
-                                ContentUnavailableView(
-                                    "Nothing here yet",
-                                    systemImage: "tray"
-                                )
-                            }.containerRelativeFrame(.vertical)
-                        } else {
-                            if paginationDirection == .prepend {
-                                loadingMoreView(cursor: ui.cursor)
-                            }
-
-                            content(binding)
-                            
-                            if paginationDirection == .append {
-                                loadingMoreView(cursor: ui.cursor)
+                                if paginationDirection == .append {
+                                    loadingMoreView(cursor: pagination.cursor(value))
+                                }
                             }
                         }
                     }
+                case .failure:
+                    ContentUnavailableView(
+                        "Something went wrong",
+                        systemImage: "exclamationmark.icloud"
+                    )
                 }
-                
-            case .failure:
-                ContentUnavailableView(
-                    "Something went wrong",
-                    systemImage: "exclamationmark.icloud"
-                )
             }
-        }
-        .frame(maxWidth: .infinity)
-        .task {
-            await store.send(.observe).finish()
+            .frame(maxWidth: .infinity)
         }
     }
 
     @ViewBuilder
     private func loadingMoreView(cursor: String?) -> some View {
-        if let cursor, !loadingMore {
-            ProgressView()
-                .tint(.secondary)
-                .onAppear {
-                    Task { @MainActor in
-                        loadingMore = true
-                        defer { loadingMore = false }
-
-                        do {
-                            try await dataAccessService.loadMore(endpoint: store.accessor, cursor: cursor, direction: paginationDirection)
-                        } catch {
-                            loggingService.error(error.localizedDescription)
-                        }
-                    }
+        if let cursor {
+            if failedCursor == cursor {
+                Button {
+                    loadPage(cursor: cursor)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+                .accessibilityLabel("Retry loading")
+            } else if !loadingMore {
+                ProgressView()
+                    .tint(.secondary)
+                    .onAppear {
+                        loadPage(cursor: cursor)
+                    }
+            }
+        }
+    }
+
+    private func loadPage(cursor: String) {
+        Task { @MainActor in
+            guard !loadingMore else { return }
+            failedCursor = nil
+            loadingMore = true
+            defer { loadingMore = false }
+
+            do {
+                try await pagination.fetchPage(
+                    using: queryClient,
+                    cursor: cursor,
+                    direction: paginationDirection
+                )
+            } catch {
+                failedCursor = cursor
+            }
         }
     }
 }

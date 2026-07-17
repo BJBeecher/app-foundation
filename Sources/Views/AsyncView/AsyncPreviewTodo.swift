@@ -1,14 +1,6 @@
-//
-//  AsyncPreviewTodo.swift
-//  VerityLabsFoundation
-//
-//  Created by Codex on 3/5/26.
-//
+import VLQuery
 
-import Foundation
-import VLData
-
-public struct AsyncPreviewTodo: DataAccessObject {
+public struct AsyncPreviewTodo: Codable, Equatable, Sendable {
     public let id: Int
     public var title: String
     public var completed: Bool
@@ -29,9 +21,8 @@ public struct AsyncPreviewTodo: DataAccessObject {
     )
 }
 
-public extension DataAccessor where T == AsyncPreviewTodo {
-    static let previewTodo = DataAccessor(
-        endpoint: .init(url: URL(string: "https://jsonplaceholder.typicode.com/todos/1")!),
-        cacheId: "preview.async.todo.1"
-    )
+public extension Fetch where Value == AsyncPreviewTodo {
+    static let previewTodo = Fetch(key: ["preview", "todo", 1]) {
+        AsyncPreviewTodo.sample
+    }
 }

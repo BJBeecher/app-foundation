@@ -1,123 +1,125 @@
-//
-//  AsyncImageDetailsPager.swift
-//  Albumo
-//
-//  Created by BJ Beecher on 2/3/26.
-//
-
-import ComposableArchitecture
-import Dependencies
-import VLData
-import VLLogging
 import SwiftUI
+import VLQuery
 
-public struct AsyncPager<UI: Paginateable, Content: View>: View where UI.Item: Identifiable {
-    @Dependency(\.dataService) private var dataService
-    @Dependency(\.loggingService) private var loggingService
-    
-    @State private var store: StoreOf<AsyncFeature<UI>>
-    @State private var internalSelectedItem: UI.Item.ID?
+public struct AsyncPager<
+    Value: Codable & Sendable,
+    Item: Identifiable & Sendable,
+    Content: View
+>: View {
+    @Environment(\.queryClient) private var queryClient
+    @State private var failedCursor: String?
+    @State private var internalSelectedItem: Item.ID?
     @State private var loadingMore = false
-    private var externalSelectedItem: Binding<UI.Item.ID?>?
+
+    private var externalSelectedItem: Binding<Item.ID?>?
+    private let pagination: PaginationConfiguration<Value, Item>
     private let paginationDirection: PaginationDirection
-    
-    private let content: (UI.Item) -> Content
-    
+    private let content: (Item) -> Content
+
     public init(
-        endpoint: DataAccessor<UI>,
+        pagination: PaginationConfiguration<Value, Item>,
         direction: PaginationDirection = .append,
-        initialPosition: UI.Item.ID? = nil,
-        selectedItem: Binding<UI.Item.ID?>? = nil,
-        @ViewBuilder content: @escaping (UI.Item) -> Content
+        initialPosition: Item.ID? = nil,
+        selectedItem: Binding<Item.ID?>? = nil,
+        @ViewBuilder content: @escaping (Item) -> Content
     ) {
-        self._store = State(initialValue: StoreOf<AsyncFeature<UI>>(initialState: .init(accessor: endpoint)) {
-            AsyncFeature()
-        })
-        self._internalSelectedItem = State(initialValue: initialPosition)
-        self.externalSelectedItem = selectedItem
+        self.pagination = pagination
         self.paginationDirection = direction
+        self.externalSelectedItem = selectedItem
+        self._internalSelectedItem = State(initialValue: initialPosition)
         self.content = content
     }
-    
-    private var selectedItem: Binding<UI.Item.ID?> {
+
+    private var selectedItem: Binding<Item.ID?> {
         externalSelectedItem ?? $internalSelectedItem
     }
-    
+
     public var body: some View {
-        ZStack {
-            switch store.loadState {
-            case .idle:
-                ProgressView()
-                    .tint(.secondary)
-                    .padding(24)
-                    .onAppear {
-                        store.send(.load(refresh: false))
-                    }
-                
-            case .loading:
-                ProgressView()
-                    .tint(.secondary)
-                    .padding(24)
-                
-            case .success(let ui):
-                if ui.items.isEmpty {
-                    ContentUnavailableView(
-                        "Nothing here yet",
-                        systemImage: "tray"
-                    )
-                } else {
-                    ScrollView(.horizontal) {
-                        LazyHStack(spacing: 0) {
-                            if paginationDirection == .prepend {
-                                loadingMoreView(cursor: ui.cursor)
-                            }
+        QueryView(pagination.initial) { snapshot in
+            ZStack {
+                switch snapshot.status {
+                case .pending:
+                    ProgressView()
+                        .tint(.secondary)
+                        .padding(24)
+                case .success:
+                    if let value = snapshot.data {
+                        let items = pagination.items(value)
+                        if items.isEmpty {
+                            ContentUnavailableView(
+                                "Nothing here yet",
+                                systemImage: "tray"
+                            )
+                        } else {
+                            ScrollView(.horizontal) {
+                                LazyHStack(spacing: 0) {
+                                    if paginationDirection == .prepend {
+                                        loadingMoreView(cursor: pagination.cursor(value))
+                                    }
 
-                            ForEach(ui.items) { item in
-                                content(item)
-                            }
-                            .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
+                                    ForEach(items) { item in
+                                        content(item)
+                                    }
+                                    .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
 
-                            if paginationDirection == .append {
-                                loadingMoreView(cursor: ui.cursor)
+                                    if paginationDirection == .append {
+                                        loadingMoreView(cursor: pagination.cursor(value))
+                                    }
+                                }
+                                .scrollTargetLayout()
                             }
+                            .scrollIndicators(.hidden)
+                            .scrollTargetBehavior(.paging)
+                            .scrollPosition(id: selectedItem)
                         }
-                        .scrollTargetLayout()
                     }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.paging)
-                    .scrollPosition(id: selectedItem)
+                case .failure:
+                    ContentUnavailableView(
+                        "Something went wrong",
+                        systemImage: "exclamationmark.icloud"
+                    )
                 }
-                
-            case .failure:
-                ContentUnavailableView(
-                    "Something went wrong",
-                    systemImage: "exclamationmark.icloud"
-                )
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            await store.send(.observe).finish()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     @ViewBuilder
     private func loadingMoreView(cursor: String?) -> some View {
-        if let cursor, !loadingMore {
-            ProgressView()
-                .tint(.secondary)
-                .onAppear {
-                    Task { @MainActor in
-                        loadingMore = true
-                        defer { loadingMore = false }
-
-                        do {
-                            try await dataService.loadMore(endpoint: store.accessor, cursor: cursor, direction: paginationDirection)
-                        } catch {
-                            loggingService.error(error.localizedDescription)
-                        }
-                    }
+        if let cursor {
+            if failedCursor == cursor {
+                Button {
+                    loadPage(cursor: cursor)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+                .accessibilityLabel("Retry loading")
+            } else if !loadingMore {
+                ProgressView()
+                    .tint(.secondary)
+                    .onAppear {
+                        loadPage(cursor: cursor)
+                    }
+            }
+        }
+    }
+
+    private func loadPage(cursor: String) {
+        Task { @MainActor in
+            guard !loadingMore else { return }
+            failedCursor = nil
+            loadingMore = true
+            defer { loadingMore = false }
+
+            do {
+                try await pagination.fetchPage(
+                    using: queryClient,
+                    cursor: cursor,
+                    direction: paginationDirection
+                )
+            } catch {
+                failedCursor = cursor
+            }
         }
     }
 }

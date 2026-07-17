@@ -1,8 +1,9 @@
-import Testing
 import Foundation
+import Testing
 import VLHTTP
 
 private struct Output: Decodable {}
+
 private struct Payload: Codable, Equatable {
     let id: Int
     let name: String
@@ -54,35 +55,4 @@ func testRequestAppendsQueryParametersToExistingQuery() throws {
     let request = try endpoint.request()
 
     #expect(request.url?.absoluteString == "https://example.com/upload?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=1")
-}
-
-@Test
-func testRequestKeyIsStableForEquivalentRequests() {
-    let url = URL(string: "https://example.com/v1/items")!
-
-    let first = HTTPEndpoint<Output>(
-        url: url,
-        method: .get,
-        headers: ["A": "1", "B": "2"],
-        queryParameters: [URLQueryItem(name: "q", value: "x")]
-    )
-
-    let second = HTTPEndpoint<Output>(
-        url: url,
-        method: .get,
-        headers: ["B": "2", "A": "1"],
-        queryParameters: [URLQueryItem(name: "q", value: "x")]
-    )
-
-    #expect(first.requestKey == second.requestKey)
-}
-
-@Test
-func testRequestKeyChangesWhenBodyChanges() {
-    let url = URL(string: "https://example.com/v1/items")!
-
-    let first = HTTPEndpoint<Output>(url: url, method: .post, body: Payload(id: 1, name: "a"))
-    let second = HTTPEndpoint<Output>(url: url, method: .post, body: Payload(id: 2, name: "a"))
-
-    #expect(first.requestKey != second.requestKey)
 }

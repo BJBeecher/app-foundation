@@ -1,37 +1,46 @@
-//
-//  StandardAsyncView.swift
-//  Albumo
-//
-//  Created by BJ Beecher on 12/18/25.
-//
-
-import VLData
 import SwiftUI
+import VLQuery
 
-public struct StandardAsyncView<UI: DataAccessObject, Content: View>: View {
-    let endpoint: DataAccessor<UI>
-    let content: (Binding<UI>) -> Content
-    
-    public init(endpoint: DataAccessor<UI>, @ViewBuilder content: @escaping (Binding<UI>) -> Content) {
-        self.endpoint = endpoint
+public struct StandardAsyncView<Value: Codable & Sendable, Content: View>: View {
+    @Environment(\.queryClient) private var queryClient
+
+    private let fetch: Fetch<Value>
+    private let content: (Binding<Value>) -> Content
+
+    public init(
+        fetch: Fetch<Value>,
+        @ViewBuilder content: @escaping (Binding<Value>) -> Content
+    ) {
+        self.fetch = fetch
         self.content = content
     }
-    
-    public init(endpoint: DataAccessor<UI>, @ViewBuilder content: @escaping (UI) -> Content) {
-        self.endpoint = endpoint
+
+    public init(
+        fetch: Fetch<Value>,
+        @ViewBuilder content: @escaping (Value) -> Content
+    ) {
+        self.fetch = fetch
         self.content = { content($0.wrappedValue) }
     }
-    
+
     public var body: some View {
-        AsyncView(endpoint: endpoint) { store in
-            @Bindable var store = store
-            
-            switch store.loadState {
-            case .idle, .loading:
+        QueryView(fetch) { snapshot in
+            switch snapshot.status {
+            case .pending:
                 ProgressView()
+                    .tint(.secondary)
             case .success:
-                if let binding = Binding($store.value) {
-                    content(binding)
+                if let value = snapshot.data {
+                    content(
+                        Binding(
+                            get: { value },
+                            set: { value in
+                                Task {
+                                    await queryClient.setQueryData(key: fetch.key, value)
+                                }
+                            }
+                        )
+                    )
                 }
             case .failure:
                 ContentUnavailableView(
@@ -44,11 +53,11 @@ public struct StandardAsyncView<UI: DataAccessObject, Content: View>: View {
 }
 
 #Preview {
-    StandardAsyncView(endpoint: .previewTodo) { $ui in
-        Text(ui.count, format: .number)
-        
-        Button("something") {
-            ui.count += 1
+    StandardAsyncView(fetch: .previewTodo) { $todo in
+        Text(todo.count, format: .number)
+
+        Button("Update") {
+            todo.count += 1
         }
     }
 }

@@ -5,13 +5,12 @@
 //  Created by BJ Beecher on 9/18/23.
 //
 
+import Alamofire
 import Combine
 import Dependencies
-import VLExtensions
 import Foundation
-import VLSharedModels
 import VLFiles
-import VLLogging
+import VLSharedModels
 
 public enum APIServiceFailure: Error {
     case badStatusCode(Int)
@@ -19,22 +18,18 @@ public enum APIServiceFailure: Error {
 
 public protocol HTTPService: Sendable {
     var unauthorizedPublisher: PassthroughSubject<Void, Never> { get }
-    
-    func callLoadState<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async -> LoadState<Output>
-    
+
     func data(from url: URL) async throws -> Data
     func download(from endpoint: URL) async throws -> URL
     @discardableResult func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output
 }
 
 public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
-    @Dependency(\.fileService) private var fileService
-    
-    private let session: URLSession
+    private let session: Session
     public let unauthorizedPublisher = PassthroughSubject<Void, Never>()
     
     init(
-        session: URLSession = .shared
+        session: Session = .default
     ) {
         self.session = session
     }
@@ -44,105 +39,74 @@ public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
 
 public extension APIServiceLiveValue {
     func download(from endpoint: URL) async throws -> URL {
-        let request = URLRequest(url: endpoint)
-        let (url, response) = try await session.download(for: request)
-        try checkForServerError(response: response)
-        return url
+        let response = await session
+            .download(endpoint)
+            .serializingDownloadedFileURL()
+            .response
+
+        try checkForServerError(response: response.response, error: response.error)
+        return try response.result.get()
     }
     
     func data(from url: URL) async throws -> Data {
-        let (data, response) = try await session.data(from: url)
-        try checkForServerError(response: response)
-        return data
-    }
-    
-    func callLoadState<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async -> LoadState<Output> {
-        do {
-            let output: Output = try await call(endpoint: endpoint)
-            return .success(output)
-        } catch {
-            return .failure(error)
-        }
+        let response = await session
+            .request(url)
+            .serializingData()
+            .response
+
+        try checkForServerError(response: response.response, error: response.error)
+        return try response.result.get()
     }
     
     @discardableResult
     func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output {
         let intercepted = try await intercept(endpoint: endpoint)
-        let request = try request(for: intercepted)
+        let request = try intercepted.request()
+        let dataRequest: DataRequest
 
         switch intercepted.body {
         case .some(.file(let file)):
-            let (data, response) = try await session.upload(for: request, fromFile: file.url)
-            return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+            dataRequest = session.upload(file.url, with: request)
 
         case .some(.multipart(let multipart)):
-            let multipartFile = try await multipart.makeBodyFile()
-
-            do {
-                let (data, response) = try await session.upload(for: request, fromFile: multipartFile.url)
-                try await fileService.delete(file: multipartFile)
-                return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
-            } catch {
-                try? await fileService.delete(file: multipartFile)
-                throw error
-            }
+            dataRequest = session.upload(
+                multipartFormData: try multipart.formData(),
+                with: request
+            )
 
         case .some(.json), .some(.jsonParameters), nil:
-            let (data, response) = try await session.data(for: request)
-            return try handleResponse(data: data, response: response, decoder: endpoint.decoder)
+            dataRequest = session.request(request)
         }
+
+        let response = await dataRequest.serializingData().response
+        try checkForServerError(response: response.response, error: response.error)
+        return try handleResponse(data: try response.result.get(), decoder: intercepted.decoder)
     }
 }
 
 // MARK: Private methods
 
 private extension APIServiceLiveValue {
-    func request<Output: Decodable>(for endpoint: HTTPEndpoint<Output>) throws -> URLRequest {
-        guard let url = endpoint.requestURL else {
-            throw GenericError(message: "Bad endpoint url: \(endpoint.url)")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = endpoint.method.value
-
-        for header in endpoint.headers {
-            request.addValue(header.value, forHTTPHeaderField: header.key)
-        }
-
-        if let body = endpoint.body {
-            switch body {
-            case .file(let file):
-                request.setValue(file.contentType.headerValue, forHTTPHeaderField: "Content-Type")
-            case .json(let object, let encoder):
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.httpBody = try encoder.encode(object)
-            case .jsonParameters(let parameters):
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-            case .multipart(let multipart):
-                request.setValue("multipart/form-data; boundary=\(multipart.boundary)", forHTTPHeaderField: "Content-Type")
-            }
-        }
-
-        return request
-    }
-
     func intercept<T: Decodable>(endpoint:  HTTPEndpoint<T>) async throws -> HTTPEndpoint<T> {
         var new = endpoint
         
-        for inteceptor in endpoint.intecepters {
-            try await inteceptor.intercept(&new)
+        for interceptor in endpoint.interceptors {
+            try await interceptor.intercept(&new)
         }
         
         return new
     }
     
-    func checkForServerError(response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
+    func checkForServerError(response: HTTPURLResponse?, error: AFError?) throws {
+        guard let response else {
+            if let error {
+                throw error
+            }
+
             throw GenericError(message: "http response not in right format")
         }
         
-        let statusCode = httpResponse.statusCode
+        let statusCode = response.statusCode
         
         if statusCode == 401 {
             unauthorizedPublisher.send()
@@ -156,9 +120,7 @@ private extension APIServiceLiveValue {
         }
     }
     
-    func handleResponse<Output: Decodable>(data: Data, response: URLResponse, decoder: JSONDecoder) throws -> Output {
-        try checkForServerError(response: response)
-        
+    func handleResponse<Output: Decodable>(data: Data, decoder: JSONDecoder) throws -> Output {
         if Output.self == EmptyResponse.self {
             return EmptyResponse() as! Output
         } else if Output.self == AttributedString.self {
@@ -167,6 +129,34 @@ private extension APIServiceLiveValue {
         } else {
             return try decoder.decode(Output.self, from: data)
         }
+    }
+}
+
+private extension MultipartBody {
+    func formData() throws -> MultipartFormData {
+        let formData = MultipartFormData(boundary: boundary)
+
+        for part in content {
+            switch part.source {
+            case .formField(let value):
+                formData.append(Data(value.utf8), withName: part.name)
+            case .json(let object, let encoder):
+                formData.append(
+                    try encoder.encode(object),
+                    withName: part.name,
+                    mimeType: part.contentType
+                )
+            case .file(let file):
+                formData.append(
+                    file.url,
+                    withName: part.name,
+                    fileName: file.url.lastPathComponent,
+                    mimeType: part.contentType
+                )
+            }
+        }
+
+        return formData
     }
 }
 
@@ -182,8 +172,6 @@ final class APIServicePreviewValue: HTTPService, @unchecked Sendable {
     func download(from endpoint: URL) async throws -> URL {
         throw GenericError(message: "Not in use")
     }
-    
-    func callLoadState<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async -> LoadState<Output> { .loading }
     
     func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output {
         throw GenericError(message: "Not in use")

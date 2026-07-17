@@ -5,7 +5,6 @@
 //  Created by BJ Beecher on 9/18/23.
 //
 
-import VLExtensions
 import Foundation
 import VLFiles
 import VLSharedModels
@@ -53,21 +52,7 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
     public var headers: [String: String]
     public var queryParameters: [URLQueryItem]?
     public var decoder: JSONDecoder
-    public let intecepters: [HTTPServiceRequestInteceptor]
-
-    public var requestKey: String? {
-        guard let url = requestURL?.absoluteString else {
-            return nil
-        }
-
-        let headers = headers
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "&")
-        let body = requestKeyBody ?? ""
-        
-        return "\(method.value)|\(url)|\(headers)|\(body)"
-    }
+    public let interceptors: [HTTPServiceRequestInterceptor]
 
     var requestURL: URL? {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
@@ -80,6 +65,40 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
 
         return components.url
     }
+
+    public func request() throws -> URLRequest {
+        guard let requestURL else {
+            throw GenericError(message: "Bad endpoint url: \(url)")
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = method.value
+        request.setValue(TimeZone.current.identifier, forHTTPHeaderField: "Timezone")
+
+        for header in headers {
+            request.setValue(header.value, forHTTPHeaderField: header.key)
+        }
+
+        switch body {
+        case .file(let file):
+            request.setValue(file.contentType.headerValue, forHTTPHeaderField: "Content-Type")
+        case .json(let object, let encoder):
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try encoder.encode(object)
+        case .jsonParameters(let parameters):
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+        case .multipart(let multipart):
+            request.setValue(
+                "multipart/form-data; boundary=\(multipart.boundary)",
+                forHTTPHeaderField: "Content-Type"
+            )
+        case nil:
+            break
+        }
+
+        return request
+    }
     
     public init(
         url: URL,
@@ -88,7 +107,7 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
         headers: [String : String] = [:],
         queryParameters: [URLQueryItem]? = nil,
         decoder: JSONDecoder = .init(),
-        inteceptors: [HTTPServiceRequestInteceptor] = []
+        interceptors: [HTTPServiceRequestInterceptor] = []
     ) {
         self.url = url
         self.method = method
@@ -96,7 +115,7 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
         self.headers = headers
         self.queryParameters = queryParameters
         self.decoder = decoder
-        self.intecepters = inteceptors
+        self.interceptors = interceptors
     }
 
     public init(
@@ -106,7 +125,7 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
         headers: [String : String] = [:],
         queryParameters: [URLQueryItem]? = nil,
         decoder: JSONDecoder = .init(),
-        inteceptors: [HTTPServiceRequestInteceptor] = []
+        interceptors: [HTTPServiceRequestInterceptor] = []
     ) {
         self.init(
             url: url,
@@ -115,24 +134,7 @@ public struct HTTPEndpoint<Output: Decodable>: @unchecked Sendable {
             headers: headers,
             queryParameters: queryParameters,
             decoder: decoder,
-            inteceptors: inteceptors
+            interceptors: interceptors
         )
-    }
-    
-    private var requestKeyBody: String? {
-        guard let body else { return nil }
-
-        switch body {
-        case .file(let file):
-            return file.url.lastPathComponent
-        case .json(let object, let encoder):
-            return try? encoder.encode(object).base64EncodedString()
-        case .jsonParameters(let parameters):
-            return try? JSONSerialization.data(withJSONObject: parameters).base64EncodedString()
-        case .multipart(let multipart):
-            return multipart.content
-                .map(\.name)
-                .joined(separator: "&")
-        }
     }
 }

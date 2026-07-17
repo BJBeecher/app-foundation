@@ -16,6 +16,7 @@ let package = Package(
                 "VLExtensions",
                 "VLSharedModels",
                 "VLServices",
+                "VLQuery",
                 "VLViews"
             ]
         ),
@@ -25,7 +26,7 @@ let package = Package(
         .library(name: "VLFiles", targets: ["VLFiles"]),
         .library(name: "VLPhotos", targets: ["VLPhotos"]),
         .library(name: "VLHTTP", targets: ["VLHTTP"]),
-        .library(name: "VLData", targets: ["VLData"]),
+        .library(name: "VLQuery", targets: ["VLQuery"]),
         .library(name: "VLKeychain", targets: ["VLKeychain"]),
         .library(name: "VLUtilities", targets: ["VLUtilities"]),
         .library(name: "VLRouter", targets: ["VLRouter"]),
@@ -35,7 +36,8 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
         .package(url: "https://github.com/pointfreeco/swift-composable-architecture.git", .upToNextMajor(from: "1.23.1")),
         .package(url: "https://github.com/onevcat/Kingfisher.git", .upToNextMajor(from: "8.5.0")),
-        .package(url: "https://github.com/SDWebImage/SDWebImageWebPCoder.git", .upToNextMajor(from: "0.3.0"))
+        .package(url: "https://github.com/SDWebImage/SDWebImageWebPCoder.git", .upToNextMajor(from: "0.3.0")),
+        .package(url: "https://github.com/Alamofire/Alamofire.git", .upToNextMajor(from: "5.10.0"))
     ],
     targets: [
         .target(name: "VLExtensions", path: "Sources/Extensions"),
@@ -84,23 +86,17 @@ let package = Package(
             name: "VLHTTP",
             dependencies: [
                 .target(name: "VLSharedModels"),
-                .target(name: "VLExtensions"),
                 .target(name: "VLFiles"),
-                .target(name: "VLLogging"),
+                .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
-            path: "Sources/HTTP"
+            path: "Sources/HTTP",
+            exclude: ["README.md"]
         ),
         .target(
-            name: "VLData",
-            dependencies: [
-                .target(name: "VLSharedModels"),
-                .target(name: "VLCache"),
-                .target(name: "VLHTTP"),
-                .target(name: "VLLogging"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ],
-            path: "Sources/Data"
+            name: "VLQuery",
+            path: "Sources/Query",
+            exclude: ["README.md"]
         ),
         .target(
             name: "VLKeychain",
@@ -129,7 +125,7 @@ let package = Package(
                 .target(name: "VLFiles"),
                 .target(name: "VLPhotos"),
                 .target(name: "VLHTTP"),
-                .target(name: "VLData"),
+                .target(name: "VLQuery"),
                 .target(name: "VLKeychain"),
                 .target(name: "VLUtilities"),
                 .target(name: "VLRouter"),
@@ -139,29 +135,46 @@ let package = Package(
         .target(
             name: "VLViews",
             dependencies: [
-                .target(name: "VLData"),
+                .target(name: "VLQuery"),
                 "Kingfisher",
-                .product(name: "Dependencies", package: "swift-dependencies"),
-                .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
-                .target(name: "VLLogging"),
-                .target(name: "VLSharedModels"),
             ],
-            path: "Sources/Views"
+            path: "Sources/Views",
+            exclude: ["README.md"]
         ),
         .testTarget(
             name: "VerityLabsFoundationTests",
             dependencies: [
                 .target(name: "VLExtensions"),
                 .target(name: "VLCache"),
-                .target(name: "VLData"),
                 .target(name: "VLSharedModels"),
-                .target(name: "VLHTTP"),
                 .target(name: "VLFiles"),
-                .target(name: "VLPhotos"),
                 .target(name: "VLKeychain"),
                 .target(name: "VLUtilities"),
             ],
             path: "Tests/VerityLabsFoundationTests"
+        ),
+        .testTarget(
+            name: "VLHTTPTests",
+            dependencies: [
+                .target(name: "VLHTTP"),
+                .product(name: "Alamofire", package: "Alamofire"),
+            ],
+            path: "Tests/VLHTTPTests"
+        ),
+        .testTarget(
+            name: "VLQueryTests",
+            dependencies: [
+                .target(name: "VLQuery"),
+            ],
+            path: "Tests/VLQueryTests"
+        ),
+        .testTarget(
+            name: "VLViewsTests",
+            dependencies: [
+                .target(name: "VLViews"),
+                .target(name: "VLQuery"),
+            ],
+            path: "Tests/VLViewsTests"
         )
     ]
 )
