@@ -50,6 +50,53 @@ let queryClient = QueryClient(
 
 Query and mutation defaults are configured independently. Mutations inherit the client's retry policy and delay unless those fields are overridden in `MutationOptions`.
 
+## Fetch Options
+
+`FetchOptions` controls query freshness, retries, garbage collection, and optional persistence:
+
+```swift
+FetchOptions(
+    staleTime: .seconds(60),
+    garbageCollectionTime: .seconds(300),
+    retry: .maxAttempts(3),
+    retryDelay: .exponentialBackoff(),
+    storage: appQueryStorage
+)
+```
+
+- `staleTime`: how long successful data is considered fresh. Fresh data is returned from cache without running the fetch operation. The default is `.zero`, so cached data is stale immediately.
+- `garbageCollectionTime`: how long an unobserved query can remain in memory before it is pruned. Use `nil` to keep unused records indefinitely. The default is `.seconds(300)`.
+- `retry`: whether failed fetches should be retried. The default is `.maxAttempts(3)`.
+- `retryDelay`: how long to wait between retry attempts. The default is `.exponentialBackoff()`.
+- `storage`: optional persistence used for `Codable & Sendable` query values. The default is `nil`, which makes the client memory-only.
+
+`Fetch` can override the client's default fetch options per query:
+
+```swift
+let userFetch = Fetch(
+    key: ["user", .uuid(userId)],
+    options: FetchOptions(staleTime: .seconds(300), retry: .never)
+) {
+    try await api.fetchUser(id: userId)
+}
+```
+
+When a `Fetch` does not provide options, `QueryClient` uses `defaultFetchOptions`.
+
+### Retry Policies
+
+`RetryPolicy` is shared by queries and mutations:
+
+- `.never`: run the operation once.
+- `.maxAttempts(Int)`: allow up to the provided number of failures before giving up.
+- `.always`: keep retrying until the operation succeeds or the task is cancelled.
+
+`RetryDelay` controls the delay before each retry:
+
+- `.constant(Duration)`: wait the same amount of time before every retry.
+- `.exponentialBackoff(initial:maximum:)`: double the delay after each failure up to the maximum. The default starts at 1 second and caps at 30 seconds.
+- `RetryDelay { attempt, error in ... }`: provide custom retry timing.
+
 ## Query Keys
 
 Query keys are structured arrays:
@@ -82,36 +129,11 @@ await queryClient.prefetch(userFetch)
 
 If another task asks for the same key while the first fetch is running, both await the same in-flight task. If cached data is fresh, the cached value is returned immediately.
 
-## Fetch State
-
-Use `state(using:)` when a UI or model needs live cache state. `FetchState` uses Swift Observation and is isolated to the main actor:
-
-```swift
-struct UserScreen: View {
-    @State private var userState: FetchState<UserProfileUI>
-
-    init(queryClient: QueryClient, userFetch: Fetch<UserProfileUI>) {
-        self._userState = State(initialValue: userFetch.state(using: queryClient))
-    }
-
-    var body: some View {
-        UserProfileView(user: userState.data)
-            .overlay {
-                if userState.isFetching {
-                    ProgressView()
-                }
-            }
-    }
-}
-```
-
-Call `try await userState.refetch()` to explicitly refresh it. `FetchState` exposes the current `snapshot` along with convenience properties for `status`, `data`, `error`, `isFetching`, `isLoading`, `isRefetching`, and `isStale`.
-
 `QuerySnapshot` includes `status`, `isFetching`, `data`, `error`, `updatedAt`, and `isStale`. `status` describes the available result, while `isFetching` indicates whether a request is currently running. This allows cached data to remain successful during a background refresh.
 
 ## SwiftUI
 
-`VLQuery` includes a SwiftUI environment value and a `QueryView`.
+`VLQuery` includes a SwiftUI environment value and property wrappers for queries and mutations.
 
 Install a client near the app root:
 
@@ -131,28 +153,30 @@ struct AppMain: App {
 }
 ```
 
-Use `QueryView` to bind query state directly to view rendering:
+Use `@QueryState` to bind query state directly to view rendering:
 
 ```swift
-let userFetch = Fetch(key: ["user", .uuid(userId)]) {
-    try await api.fetchUser(id: userId)
-}
+struct UserScreen: View {
+    @QueryState private var user: Query<UserProfileUI>
 
-QueryView(userFetch) { snapshot in
-    switch snapshot.status {
-    case .pending:
-        ProgressView()
-    case .success:
-        if let user = snapshot.data {
-            UserProfileView(user: user)
+    init(fetch: Fetch<UserProfileUI>) {
+        self._user = QueryState(fetch)
+    }
+
+    var body: some View {
+        switch user.status {
+        case .pending:
+            ProgressView()
+        case .success:
+            if let user = user.data {
+                UserProfileView(user: user)
+            }
+        case .failure:
+            ErrorView(error: user.error)
         }
-    case .failure:
-        ErrorView(error: snapshot.error)
     }
 }
 ```
-
-`QueryView` uses the `QueryClient` from SwiftUI environment and renders an observable `FetchState` for the supplied fetch.
 
 ## Updating Cached Data
 
@@ -208,9 +232,11 @@ await queryClient.invalidateQueries(
 Create mutations through `QueryClient`. Mutations execute independently and are not deduplicated or cached:
 
 ```swift
-let followUser: Mutation<UUID, User, Void> = queryClient.createMutation { userId in
-    try await api.followUser(id: userId)
-}
+let followUser = queryClient.createMutation(
+    MutationOptions { userId in
+        try await api.followUser(id: userId)
+    }
+)
 
 try await followUser.mutate(userId)
 ```
@@ -218,7 +244,7 @@ try await followUser.mutate(userId)
 Mutations are not retried by default. Configure retries and awaited lifecycle callbacks with `MutationOptions`. Retry values omitted here inherit from the client's default mutation options:
 
 ```swift
-let options = MutationOptions<UUID, User, Void>(
+let options = MutationOptions<UUID, User>(
     retry: .maxAttempts(2),
     onSuccess: { _, userId, _ in
         await queryClient.invalidateQueries(
@@ -227,14 +253,60 @@ let options = MutationOptions<UUID, User, Void>(
     },
     onSettled: { _, _, _, _ in
         await analytics.finishedFollowingUser()
+    },
+    mutationFn: { userId in
+        try await api.followUser(id: userId)
     }
 )
 
-let followUser = queryClient.createMutation(
-    options: options
-) { userId in
-    try await api.followUser(id: userId)
+let followUser = queryClient.createMutation(options)
+```
+
+### Mutation Options
+
+`MutationOptions` controls the mutation operation, retries, and lifecycle callbacks:
+
+```swift
+MutationOptions<Variables, Value>(
+    retry: .maxAttempts(2),
+    retryDelay: .constant(.seconds(1)),
+    onSuccess: { value, variables, _ in },
+    onError: { error, variables, _ in },
+    onSettled: { value, error, variables, _ in },
+    mutationFn: { variables in
+        try await api.performMutation(variables)
+    }
+)
+```
+
+- `mutationFn`: the required async operation. It receives exactly one `Variables` value and returns `Value`.
+- `retry`: optional override for the client's default mutation retry policy. The client default is `.never`.
+- `retryDelay`: optional override for the client's default mutation retry delay. The client default is `.exponentialBackoff()`.
+- `onSuccess`: runs after `mutationFn` succeeds. It receives the returned value, the variables, and the optional `onMutate` result.
+- `onError`: runs after the mutation gives up after all retry attempts. It receives the error, the variables, and the optional `onMutate` result.
+- `onSettled`: runs after either success or final failure. It receives the optional value, optional error, variables, and optional `onMutate` result.
+- `onMutate`: runs before the mutation operation. Use the `onMutate` initializer when optimistic updates need a rollback value.
+
+Like TanStack Query, mutation variables are a single value. Use a domain type when the payload has meaning, or a labeled tuple for lightweight multi-value mutations:
+
+```swift
+let options = MutationOptions<(id: UUID, patch: RecipePatch), EmptyResponse> { variables in
+    try await api.patchRecipe(id: variables.id, patch: variables.patch)
 }
+
+try await mutation.mutate((id: recipeId, patch: patch))
+```
+
+Use `Void` when variables are captured by the mutation instead of passed to `mutate`:
+
+```swift
+let mutation = queryClient.createMutation(
+    MutationOptions<Void, EmptyResponse> { _ in
+        try await api.deleteRecipe(id: recipeId)
+    }
+)
+
+try await mutation.mutate()
 ```
 
 Callbacks run in this order:
@@ -246,28 +318,33 @@ Callbacks run in this order:
 
 Each callback is awaited. The mutation remains pending until its success or failure callbacks finish.
 
-`onMutate` can return context for optimistic updates and rollback:
+`onMutate` can return a result for optimistic updates and rollback. Like TanStack Query's
+`TOnMutateResult`, this type belongs to the lifecycle options and is not exposed by the
+`Mutation<Variables, Value>` handle:
 
 ```swift
-struct OptimisticUpdateContext: Sendable {
+struct OptimisticUpdateResult: Sendable {
     let previousUser: User
 }
 
-let options = MutationOptions<UpdateUser, User, OptimisticUpdateContext>(
+let options = MutationOptions<UpdateUser, User>(
     onMutate: { update in
         let previousUser: User = await queryClient.getQueryData(key: ["user", .uuid(update.id)])!
         await queryClient.setQueryData(
             key: ["user", .uuid(update.id)],
             previousUser.applying(update)
         )
-        return OptimisticUpdateContext(previousUser: previousUser)
+        return OptimisticUpdateResult(previousUser: previousUser)
     },
-    onError: { _, update, context in
-        guard let context else { return }
+    onError: { _, update, onMutateResult in
+        guard let onMutateResult else { return }
         await queryClient.setQueryData(
             key: ["user", .uuid(update.id)],
-            context.previousUser
+            onMutateResult.previousUser
         )
+    },
+    mutationFn: { update in
+        try await api.updateUser(update)
     }
 )
 ```
@@ -281,6 +358,59 @@ for await snapshot in followUser.observe() {
         break
     }
 }
+```
+
+## SwiftUI Property Wrappers
+
+`@QueryState` resolves `QueryClient` from the SwiftUI environment, begins observing automatically,
+and exposes query state and commands directly:
+
+```swift
+struct TodosView: View {
+    @QueryState private var todos: Query<[Todo]>
+
+    init(fetch: Fetch<[Todo]>) {
+        self._todos = QueryState(fetch)
+    }
+
+    var body: some View {
+        List(todos.data ?? []) { todo in
+            Text(todo.title)
+        }
+        .refreshable {
+            _ = try? await todos.refetch()
+        }
+    }
+}
+```
+
+`@MutationState` observes a mutation but never executes it automatically. State and commands are
+available directly from the wrapped property:
+
+```swift
+struct AddTodoButton: View {
+    @MutationState private var addTodo: MutationState<TodoDraft, Todo>
+
+    init(options: MutationOptions<TodoDraft, Todo>) {
+        self._addTodo = MutationState(options)
+    }
+
+    var body: some View {
+        Button("Add") {
+            Task {
+                try await addTodo.mutate(TodoDraft(title: "New todo"))
+            }
+        }
+        .disabled(addTodo.isPending)
+    }
+}
+```
+
+Install the client once above these views:
+
+```swift
+ContentView()
+    .queryClient(queryClient)
 ```
 
 `MutationSnapshot` exposes status, variables, returned data, error, and failure count. When the same mutation object is invoked concurrently, every operation and callback runs, while the latest invocation owns the visible snapshot state.

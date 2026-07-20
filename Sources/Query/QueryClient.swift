@@ -44,23 +44,11 @@ public actor QueryClient {
     }
 
     public nonisolated func createMutation<Variables: Sendable, Value: Sendable>(
-        operation: @escaping @Sendable (Variables) async throws -> Value
-    ) -> Mutation<Variables, Value, Void> {
+        _ options: MutationOptions<Variables, Value>
+    ) -> Mutation<Variables, Value> {
         Mutation(
             defaultOptions: defaultMutationOptions,
-            options: MutationOptions<Variables, Value, Void>(),
-            operation: operation
-        )
-    }
-
-    public nonisolated func createMutation<Variables: Sendable, Value: Sendable, Context: Sendable>(
-        options: MutationOptions<Variables, Value, Context>,
-        operation: @escaping @Sendable (Variables) async throws -> Value
-    ) -> Mutation<Variables, Value, Context> {
-        Mutation(
-            defaultOptions: defaultMutationOptions,
-            options: options,
-            operation: operation
+            options: options
         )
     }
 

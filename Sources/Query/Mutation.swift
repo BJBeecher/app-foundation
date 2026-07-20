@@ -1,24 +1,21 @@
 import Foundation
 
-public actor Mutation<Variables: Sendable, Value: Sendable, Context: Sendable> {
+public actor Mutation<Variables: Sendable, Value: Sendable> {
     public private(set) var snapshot: MutationSnapshot<Variables, Value>
 
-    private let options: MutationOptions<Variables, Value, Context>
+    private let options: MutationOptions<Variables, Value>
     private let retry: RetryPolicy
     private let retryDelay: RetryDelay
-    private let operation: @Sendable (Variables) async throws -> Value
     private var observers: [UUID: AsyncStream<MutationSnapshot<Variables, Value>>.Continuation] = [:]
     private var latestInvocationID: UUID?
 
     init(
         defaultOptions: MutationDefaultOptions,
-        options: MutationOptions<Variables, Value, Context>,
-        operation: @escaping @Sendable (Variables) async throws -> Value
+        options: MutationOptions<Variables, Value>
     ) {
         self.options = options
         self.retry = options.retry ?? defaultOptions.retry
         self.retryDelay = options.retryDelay ?? defaultOptions.retryDelay
-        self.operation = operation
         self.snapshot = .idle
     }
 
@@ -51,18 +48,18 @@ public actor Mutation<Variables: Sendable, Value: Sendable, Context: Sendable> {
             for: invocationID
         )
 
-        var context: Context?
+        var onMutateResult: (any Sendable)?
         var failureCount = 0
 
         do {
-            context = try await options.onMutate?(variables)
+            onMutateResult = try await options.onMutate?(variables)
 
             while true {
                 do {
                     try Task.checkCancellation()
-                    let value = try await operation(variables)
-                    await options.onSuccess?(value, variables, context)
-                    await options.onSettled?(value, nil, variables, context)
+                    let value = try await options.mutationFn(variables)
+                    await options.onSuccess?(value, variables, onMutateResult)
+                    await options.onSettled?(value, nil, variables, onMutateResult)
                     updateSnapshot(
                         .init(
                             status: .success,
@@ -91,8 +88,8 @@ public actor Mutation<Variables: Sendable, Value: Sendable, Context: Sendable> {
             if failureCount == 0 {
                 failureCount = 1
             }
-            await options.onError?(error, variables, context)
-            await options.onSettled?(nil, error, variables, context)
+            await options.onError?(error, variables, onMutateResult)
+            await options.onSettled?(nil, error, variables, onMutateResult)
             updateSnapshot(
                 .init(
                     status: .failure,
@@ -144,5 +141,12 @@ public actor Mutation<Variables: Sendable, Value: Sendable, Context: Sendable> {
         for observer in observers.values {
             observer.yield(snapshot)
         }
+    }
+}
+
+public extension Mutation where Variables == Void {
+    @discardableResult
+    func mutate() async throws -> Value {
+        try await mutate(())
     }
 }

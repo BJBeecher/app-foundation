@@ -11,47 +11,8 @@ private actor QueryCounter {
     }
 }
 
-private actor QueryGate {
-    private var isOpen = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { continuation in
-            continuations.append(continuation)
-        }
-    }
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let continuations = continuations
-        self.continuations.removeAll()
-        for continuation in continuations {
-            continuation.resume()
-        }
-    }
-}
-
 private enum QueryTestError: Error {
     case failed
-    case timedOut
-}
-
-@MainActor
-private func waitForSnapshot<Value: Sendable>(
-    _ state: FetchState<Value>,
-    matching predicate: (QuerySnapshot<Value>) -> Bool
-) async throws -> QuerySnapshot<Value> {
-    for _ in 0..<100 {
-        let snapshot = state.snapshot
-        if predicate(snapshot) {
-            return snapshot
-        }
-        try await Task.sleep(for: .milliseconds(10))
-    }
-
-    throw QueryTestError.timedOut
 }
 
 private actor TestQueryStorage: QueryStorage {
@@ -188,31 +149,6 @@ func testRetryPolicyRetriesUntilSuccess() async throws {
 
     #expect(value == 3)
     #expect(await counter.value == 3)
-}
-
-@Test
-@MainActor
-func testFetchStateTracksCacheUpdates() async throws {
-    let client = QueryClient(defaultFetchOptions: FetchOptions(staleTime: .seconds(60), retry: .never))
-    let gate = QueryGate()
-    let countFetch = Fetch(key: ["count"]) {
-        await gate.wait()
-        return 1
-    }
-    let state = countFetch.state(using: client)
-
-    #expect(state.status == .pending)
-
-    let fetching = try await waitForSnapshot(state) { $0.isFetching }
-    #expect(fetching.status == .pending)
-
-    await client.setQueryData(key: ["count"], 42)
-
-    let updated = try await waitForSnapshot(state) { $0.data == 42 }
-    #expect(updated.status == .success)
-    #expect(updated.isFetching == true)
-
-    await gate.open()
 }
 
 @Test

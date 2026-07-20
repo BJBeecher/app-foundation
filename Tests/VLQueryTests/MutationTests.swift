@@ -49,10 +49,12 @@ private actor MutationGate {
 func testMutationPublishesLifecycleState() async throws {
     let client = QueryClient()
     let gate = MutationGate()
-    let mutation: Mutation<Int, Int, Void> = client.createMutation { value in
-        await gate.wait()
-        return value * 2
-    }
+    let mutation = client.createMutation(
+        MutationOptions { value in
+            await gate.wait()
+            return value * 2
+        }
+    )
     let stream = mutation.observe()
     var iterator = stream.makeAsyncIterator()
 
@@ -78,21 +80,22 @@ func testMutationAwaitsCallbacksInOrder() async throws {
     let events = MutationEvents()
     let callbackStarted = MutationGate()
     let finishCallback = MutationGate()
-    let options = MutationOptions<Int, Int, String>(
+    let options = MutationOptions<Int, Int>(
         onMutate: { variables in
             await events.append("mutate-\(variables)")
-            return "context"
+            return "on-mutate-result"
         },
-        onSuccess: { value, variables, context in
-            await events.append("success-\(value)-\(variables)-\(context ?? "nil")")
+        onSuccess: { value, variables, onMutateResult in
+            await events.append("success-\(value)-\(variables)-\(onMutateResult ?? "nil")")
             await callbackStarted.open()
             await finishCallback.wait()
         },
-        onSettled: { value, error, _, context in
-            await events.append("settled-\(value ?? -1)-\(error == nil)-\(context ?? "nil")")
-        }
+        onSettled: { value, error, _, onMutateResult in
+            await events.append("settled-\(value ?? -1)-\(error == nil)-\(onMutateResult ?? "nil")")
+        },
+        mutationFn: { value in value + 1 }
     )
-    let mutation = client.createMutation(options: options) { value in value + 1 }
+    let mutation = client.createMutation(options)
 
     let task = Task { try await mutation.mutate(4) }
     await callbackStarted.wait()
@@ -102,28 +105,27 @@ func testMutationAwaitsCallbacksInOrder() async throws {
     #expect(try await task.value == 5)
     #expect(await events.values == [
         "mutate-4",
-        "success-5-4-context",
-        "settled-5-true-context"
+        "success-5-4-on-mutate-result",
+        "settled-5-true-on-mutate-result"
     ])
     #expect(await mutation.snapshot.status == .success)
 }
 
 @Test
-func testMutationPassesContextToErrorAndSettledCallbacks() async {
+func testMutationPassesOnMutateResultToErrorAndSettledCallbacks() async {
     let client = QueryClient()
     let events = MutationEvents()
-    let options = MutationOptions<Int, Int, String>(
+    let options = MutationOptions<Int, Int>(
         onMutate: { _ in "rollback-context" },
-        onError: { _, variables, context in
-            await events.append("error-\(variables)-\(context ?? "nil")")
+        onError: { _, variables, onMutateResult in
+            await events.append("error-\(variables)-\(onMutateResult ?? "nil")")
         },
-        onSettled: { value, error, _, context in
-            await events.append("settled-\(value == nil)-\(error != nil)-\(context ?? "nil")")
-        }
+        onSettled: { value, error, _, onMutateResult in
+            await events.append("settled-\(value == nil)-\(error != nil)-\(onMutateResult ?? "nil")")
+        },
+        mutationFn: { _ in throw MutationTestError.failed }
     )
-    let mutation = client.createMutation(options: options) { _ in
-        throw MutationTestError.failed
-    }
+    let mutation = client.createMutation(options)
 
     do {
         let _: Int = try await mutation.mutate(7)
@@ -144,10 +146,12 @@ func testMutationPassesContextToErrorAndSettledCallbacks() async {
 func testMutationsDoNotRetryByDefault() async {
     let client = QueryClient()
     let counter = MutationCounter()
-    let mutation: Mutation<Int, Int, Void> = client.createMutation { _ in
-        _ = await counter.next()
-        throw MutationTestError.failed
-    }
+    let mutation = client.createMutation(
+        MutationOptions<Int, Int> { _ in
+            _ = await counter.next()
+            throw MutationTestError.failed
+        }
+    )
 
     _ = try? await mutation.mutate(1)
 
@@ -156,20 +160,29 @@ func testMutationsDoNotRetryByDefault() async {
 }
 
 @Test
+func testVoidMutationCanRunWithoutVariables() async throws {
+    let client = QueryClient()
+    let mutation = client.createMutation(MutationOptions<Void, String> { _ in "success" })
+
+    #expect(try await mutation.mutate() == "success")
+}
+
+@Test
 func testMutationCanRetryUntilSuccess() async throws {
     let client = QueryClient()
     let counter = MutationCounter()
-    let options = MutationOptions<Int, Int, Void>(
+    let options = MutationOptions<Int, Int>(
         retry: .maxAttempts(2),
-        retryDelay: .constant(.zero)
-    )
-    let mutation = client.createMutation(options: options) { _ in
-        let attempt = await counter.next()
-        if attempt < 3 {
-            throw MutationTestError.failed
+        retryDelay: .constant(.zero),
+        mutationFn: { _ in
+            let attempt = await counter.next()
+            if attempt < 3 {
+                throw MutationTestError.failed
+            }
+            return attempt
         }
-        return attempt
-    }
+    )
+    let mutation = client.createMutation(options)
 
     #expect(try await mutation.mutate(1) == 3)
     #expect(await counter.value == 3)
@@ -185,13 +198,15 @@ func testMutationUsesClientDefaultOptions() async throws {
         )
     )
     let counter = MutationCounter()
-    let mutation: Mutation<Int, Int, Void> = client.createMutation { _ in
-        let attempt = await counter.next()
-        if attempt < 3 {
-            throw MutationTestError.failed
+    let mutation = client.createMutation(
+        MutationOptions<Int, Int> { _ in
+            let attempt = await counter.next()
+            if attempt < 3 {
+                throw MutationTestError.failed
+            }
+            return attempt
         }
-        return attempt
-    }
+    )
 
     #expect(try await mutation.mutate(1) == 3)
     #expect(await counter.value == 3)
@@ -206,11 +221,11 @@ func testMutationOptionsOverrideClientDefaults() async {
         )
     )
     let counter = MutationCounter()
-    let options = MutationOptions<Int, Int, Void>(retry: .never)
-    let mutation = client.createMutation(options: options) { _ in
+    let options = MutationOptions<Int, Int>(retry: .never) { _ in
         _ = await counter.next()
         throw MutationTestError.failed
     }
+    let mutation = client.createMutation(options)
 
     _ = try? await mutation.mutate(1)
 
@@ -223,14 +238,16 @@ func testConcurrentMutationsRunIndependentlyAndLatestInvocationOwnsState() async
     let counter = MutationCounter()
     let slowStarted = MutationGate()
     let finishSlow = MutationGate()
-    let mutation: Mutation<Int, Int, Void> = client.createMutation { value in
-        _ = await counter.next()
-        if value == 1 {
-            await slowStarted.open()
-            await finishSlow.wait()
+    let mutation = client.createMutation(
+        MutationOptions { value in
+            _ = await counter.next()
+            if value == 1 {
+                await slowStarted.open()
+                await finishSlow.wait()
+            }
+            return value
         }
-        return value
-    }
+    )
 
     let slowTask = Task { try await mutation.mutate(1) }
     await slowStarted.wait()
@@ -249,7 +266,7 @@ func testConcurrentMutationsRunIndependentlyAndLatestInvocationOwnsState() async
 @Test
 func testMutationResetReturnsToIdle() async throws {
     let client = QueryClient()
-    let mutation: Mutation<Int, Int, Void> = client.createMutation { $0 }
+    let mutation = client.createMutation(MutationOptions<Int, Int> { $0 })
 
     _ = try await mutation.mutate(9)
     await mutation.reset()
