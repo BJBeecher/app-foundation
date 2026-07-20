@@ -1,7 +1,7 @@
 @preconcurrency import Combine
 import Foundation
 
-public actor RouterServiceLiveValue<Destination: RouterDestination>: Sendable {
+public actor NavigationRouter<Destination: RouterDestination>: Sendable {
     private let destinationSubject = CurrentValueSubject<[Destination], Never>([])
     private let sheetSubject = CurrentValueSubject<[Destination], Never>([])
     private let alertSubject = CurrentValueSubject<[PopupAlert], Never>([])

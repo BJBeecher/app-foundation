@@ -3,9 +3,9 @@ import Foundation
 
 @Reducer
 public struct RouterFeature<Route: RouterDestination>: Sendable {
-    private let routerService: RouterServiceLiveValue<Route>
+    private let routerService: NavigationRouter<Route>
 
-    public init(routerService: RouterServiceLiveValue<Route>) {
+    public init(routerService: NavigationRouter<Route>) {
         self.routerService = routerService
     }
 

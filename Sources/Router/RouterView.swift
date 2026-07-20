@@ -16,7 +16,7 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
     let background: Color?
     let content: (Destination, Namespace.ID) -> Content
     
-    public init(background: Color? = nil, routerService: RouterServiceLiveValue<Destination>, @ViewBuilder destination: @escaping (Destination, Namespace.ID) -> Content) {
+    public init(background: Color? = nil, routerService: NavigationRouter<Destination>, @ViewBuilder destination: @escaping (Destination, Namespace.ID) -> Content) {
         self._store = SwiftUI.State(initialValue: StoreOf<RouterFeature>(initialState: .init()) {
             RouterFeature(routerService: routerService)
         })
@@ -27,6 +27,7 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
     public var body: some View {
         NavigationStack(path: $store.destinations) {
             ProgressView()
+                .tint(.secondary)
                 .navigationDestination(for: Destination.self) { destination in
                     ZStack {
                         background?
@@ -84,6 +85,7 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
     @ViewBuilder
     private func loadingOverlay(_ loadingString: String) -> some View {
         let base = ProgressView(loadingString)
+            .tint(.secondary)
             .padding(24)
             .transition(.scale)
 

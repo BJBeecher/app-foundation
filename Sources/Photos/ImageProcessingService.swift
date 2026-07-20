@@ -1,4 +1,3 @@
-import Dependencies
 import Foundation
 import ImageIO
 import PhotosUI
@@ -22,12 +21,16 @@ public enum ImageProcessingOutputFormat: Sendable {
     case webP
 }
 
-public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unchecked Sendable {
-    @Dependency(\.fileService) private var fileService
+public final class DefaultImageProcessingService: ImageProcessingService, @unchecked Sendable {
+    private let fileService: FileService
 
     private let semaphore = AsyncSemaphore(maxConcurrent: 4)
     private let maxDimension: CGFloat = 1200
     private let compressionQuality: CGFloat = 0.8
+
+    public init(fileService: FileService) {
+        self.fileService = fileService
+    }
     
     public func processPickerItem(_ item: PhotosPickerItem) async throws -> ProcessedImage {
         try await processPickerItem(item, outputFormat: .jpeg)
@@ -177,16 +180,5 @@ public final class ImageProcessingServiceLiveValue: ImageProcessingService, @unc
             captureDate: captureDateString.flatMap { formatter.date(from: $0) },
             location: location
         )
-    }
-}
-
-public enum ImageProcessingServiceKey: DependencyKey {
-    public static let liveValue: ImageProcessingService = ImageProcessingServiceLiveValue()
-}
-
-public extension DependencyValues {
-    var imageProcessingService: ImageProcessingService {
-        get { self[ImageProcessingServiceKey.self] }
-        set { self[ImageProcessingServiceKey.self] = newValue }
     }
 }

@@ -1,4 +1,3 @@
-import Dependencies
 import Foundation
 
 public actor UserDefaultsService: @unchecked Sendable {
@@ -20,8 +19,4 @@ public actor UserDefaultsService: @unchecked Sendable {
 
         return try decoder.decode(Value.self, from: data)
     }
-}
-
-extension UserDefaultsService: DependencyKey {
-    public static let liveValue = UserDefaultsService()
 }

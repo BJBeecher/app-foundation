@@ -43,15 +43,15 @@ let endpoint = HTTPEndpoint<User>(
 
 ## Sending Requests
 
-Use the `HTTPService` dependency:
+Create an `HTTPService` in your app or inject one through your app's own dependency system:
 
 ```swift
-import Dependencies
-
-@Dependency(\.apiService) var apiService
+let apiService: HTTPService = AlamofireHTTPService()
 
 let user: User = try await apiService.call(endpoint: endpoint)
 ```
+
+`VLHTTP` does not register `HTTPService` with a dependency container. Applications own that wiring.
 
 Raw data and file downloads are also available:
 

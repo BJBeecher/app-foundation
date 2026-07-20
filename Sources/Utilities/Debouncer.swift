@@ -5,7 +5,6 @@
 //  Created by BJ Beecher on 10/2/24.
 //
 
-import Dependencies
 import Foundation
 
 public actor Debouncer {
@@ -21,10 +20,4 @@ public actor Debouncer {
             await block()
         }
     }
-}
-
-// MARK: Dependency
-
-extension Debouncer: DependencyKey {
-    public static let liveValue = Debouncer()
 }

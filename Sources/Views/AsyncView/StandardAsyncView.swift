@@ -24,13 +24,13 @@ public struct StandardAsyncView<Value: Codable & Sendable, Content: View>: View 
     }
 
     public var body: some View {
-        QueryView(fetch) { snapshot in
-            switch snapshot.status {
+        QueryView(fetch) { query in
+            switch query.status {
             case .pending:
                 ProgressView()
                     .tint(.secondary)
             case .success:
-                if let value = snapshot.data {
+                if let value = query.data {
                     content(
                         Binding(
                             get: { value },

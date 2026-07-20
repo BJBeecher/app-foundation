@@ -4,6 +4,21 @@
 
 ## Async Content
 
+Render custom query state with `QueryView`:
+
+```swift
+QueryView(userFetch) { query in
+    switch query.status {
+    case .pending:
+        ProgressView()
+    case .success:
+        UserView(user: query.data)
+    case .failure:
+        ContentUnavailableView("Unable to load user", systemImage: "person.crop.circle.badge.exclamationmark")
+    }
+}
+```
+
 Render a fetch with standard loading and failure states:
 
 ```swift

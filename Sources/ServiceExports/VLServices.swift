@@ -6,4 +6,5 @@
 @_exported import VLKeychain
 @_exported import VLPhotos
 @_exported import VLRouter
+@_exported import VLSampleable
 @_exported import VLUtilities

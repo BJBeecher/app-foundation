@@ -16,6 +16,7 @@ let package = Package(
                 "VLExtensions",
                 "VLSharedModels",
                 "VLServices",
+                "VLSampleable",
                 "VLQuery",
                 "VLViews"
             ]
@@ -26,6 +27,7 @@ let package = Package(
         .library(name: "VLFiles", targets: ["VLFiles"]),
         .library(name: "VLPhotos", targets: ["VLPhotos"]),
         .library(name: "VLHTTP", targets: ["VLHTTP"]),
+        .library(name: "VLSampleable", targets: ["VLSampleable"]),
         .library(name: "VLQuery", targets: ["VLQuery"]),
         .library(name: "VLKeychain", targets: ["VLKeychain"]),
         .library(name: "VLUtilities", targets: ["VLUtilities"]),
@@ -33,7 +35,6 @@ let package = Package(
         .library(name: "VLViews", targets: ["VLViews"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMajor(from: "1.3.9")),
         .package(url: "https://github.com/pointfreeco/swift-composable-architecture.git", .upToNextMajor(from: "1.23.1")),
         .package(url: "https://github.com/onevcat/Kingfisher.git", .upToNextMajor(from: "8.5.0")),
         .package(url: "https://github.com/SDWebImage/SDWebImageWebPCoder.git", .upToNextMajor(from: "0.3.0")),
@@ -49,17 +50,13 @@ let package = Package(
         .target(
             name: "VLLogging",
             dependencies: [
-                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
             ],
             path: "Sources/Logging"
         ),
         .target(
             name: "VLCache",
-            dependencies: [
-                .target(name: "VLSharedModels"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ],
+            dependencies: [],
             path: "Sources/Cache"
         ),
         .target(
@@ -67,7 +64,6 @@ let package = Package(
             dependencies: [
                 .target(name: "VLSharedModels"),
                 .target(name: "VLCache"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             path: "Sources/Files"
         ),
@@ -78,7 +74,6 @@ let package = Package(
                 .target(name: "VLSharedModels"),
                 .target(name: "VLUtilities"),
                 "SDWebImageWebPCoder",
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             path: "Sources/Photos"
         ),
@@ -88,7 +83,6 @@ let package = Package(
                 .target(name: "VLSharedModels"),
                 .target(name: "VLFiles"),
                 .product(name: "Alamofire", package: "Alamofire"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             path: "Sources/HTTP",
             exclude: ["README.md"]
@@ -99,17 +93,20 @@ let package = Package(
             exclude: ["README.md"]
         ),
         .target(
+            name: "VLSampleable",
+            dependencies: [
+                .target(name: "VLHTTP"),
+                .target(name: "VLSharedModels"),
+            ],
+            path: "Sources/Sampleable",
+            exclude: ["README.md"]
+        ),
+        .target(
             name: "VLKeychain",
             dependencies: [],
             path: "Sources/Keychain"
         ),
-        .target(
-            name: "VLUtilities",
-            dependencies: [
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ],
-            path: "Sources/Utilities"
-        ),
+        .target(name: "VLUtilities", path: "Sources/Utilities"),
         .target(
             name: "VLRouter",
             dependencies: [
@@ -125,6 +122,7 @@ let package = Package(
                 .target(name: "VLFiles"),
                 .target(name: "VLPhotos"),
                 .target(name: "VLHTTP"),
+                .target(name: "VLSampleable"),
                 .target(name: "VLQuery"),
                 .target(name: "VLKeychain"),
                 .target(name: "VLUtilities"),
@@ -160,6 +158,15 @@ let package = Package(
                 .product(name: "Alamofire", package: "Alamofire"),
             ],
             path: "Tests/VLHTTPTests"
+        ),
+        .testTarget(
+            name: "VLSampleableTests",
+            dependencies: [
+                .target(name: "VLSampleable"),
+                .target(name: "VLHTTP"),
+                .target(name: "VLSharedModels"),
+            ],
+            path: "Tests/VLSampleableTests"
         ),
         .testTarget(
             name: "VLQueryTests",

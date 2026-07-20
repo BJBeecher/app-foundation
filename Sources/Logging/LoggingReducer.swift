@@ -9,9 +9,11 @@ import ComposableArchitecture
 
 @Reducer
 public struct LoggingReducer<State, Action> {
-    @Dependency(\.loggingService) private var logger
+    private let logger: LoggingService
     
-    public init() {}
+    public init(logger: LoggingService) {
+        self.logger = logger
+    }
     
     public var body: some Reducer<State, Action> {
         Reduce { state, action in

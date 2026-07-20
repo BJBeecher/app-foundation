@@ -7,7 +7,6 @@
 
 import Alamofire
 import Combine
-import Dependencies
 import Foundation
 import VLFiles
 import VLSharedModels
@@ -24,11 +23,11 @@ public protocol HTTPService: Sendable {
     @discardableResult func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output
 }
 
-public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
+public final class AlamofireHTTPService: HTTPService, @unchecked Sendable {
     private let session: Session
     public let unauthorizedPublisher = PassthroughSubject<Void, Never>()
     
-    init(
+    public init(
         session: Session = .default
     ) {
         self.session = session
@@ -37,7 +36,7 @@ public final class APIServiceLiveValue: HTTPService, @unchecked Sendable {
 
 // MARK: Public Methods
 
-public extension APIServiceLiveValue {
+public extension AlamofireHTTPService {
     func download(from endpoint: URL) async throws -> URL {
         let response = await session
             .download(endpoint)
@@ -86,7 +85,7 @@ public extension APIServiceLiveValue {
 
 // MARK: Private methods
 
-private extension APIServiceLiveValue {
+private extension AlamofireHTTPService {
     func intercept<T: Decodable>(endpoint:  HTTPEndpoint<T>) async throws -> HTTPEndpoint<T> {
         var new = endpoint
         
@@ -157,37 +156,5 @@ private extension MultipartBody {
         }
 
         return formData
-    }
-}
-
-// MARK: Preview
-
-final class APIServicePreviewValue: HTTPService, @unchecked Sendable {
-    func data(from url: URL) async throws -> Data {
-        throw GenericError(message: "Not in use")
-    }
-    
-    let unauthorizedPublisher = PassthroughSubject<Void, Never>()
-    
-    func download(from endpoint: URL) async throws -> URL {
-        throw GenericError(message: "Not in use")
-    }
-    
-    func call<Output: Decodable>(endpoint: HTTPEndpoint<Output>) async throws -> Output {
-        throw GenericError(message: "Not in use")
-    }
-}
-
-// MARK: Dependency
-
-public enum APIServiceKey: DependencyKey {
-    public static let liveValue: HTTPService = APIServiceLiveValue()
-    public static let previewValue: HTTPService = APIServicePreviewValue()
-}
-
-public extension DependencyValues {
-    var apiService: HTTPService {
-        get { self[APIServiceKey.self] }
-        set { self[APIServiceKey.self] = newValue }
     }
 }

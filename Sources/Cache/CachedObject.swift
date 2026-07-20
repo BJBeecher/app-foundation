@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct CachedObject<Object: Cacheable>: Codable {
+public struct CachedObject<Object: Codable & Sendable>: Codable, Sendable {
     public let expiry: Date?
     public var object: Object
     

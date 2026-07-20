@@ -55,10 +55,10 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
 @Suite(.serialized)
 struct HTTPServiceTests {
-    private func makeService() -> APIServiceLiveValue {
+    private func makeService() -> AlamofireHTTPService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
-        return APIServiceLiveValue(session: Session(configuration: configuration))
+        return AlamofireHTTPService(session: Session(configuration: configuration))
     }
 
     @Test

@@ -35,15 +35,15 @@ public struct AsyncPager<
     }
 
     public var body: some View {
-        QueryView(pagination.initial) { snapshot in
+        QueryView(pagination.initial) { query in
             ZStack {
-                switch snapshot.status {
+                switch query.status {
                 case .pending:
                     ProgressView()
                         .tint(.secondary)
                         .padding(24)
                 case .success:
-                    if let value = snapshot.data {
+                    if let value = query.data {
                         let items = pagination.items(value)
                         if items.isEmpty {
                             ContentUnavailableView(

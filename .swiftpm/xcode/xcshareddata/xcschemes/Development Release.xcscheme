@@ -46,9 +46,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "928F820A2F99420B0055C8B6"
-            BuildableName = "simmer.app"
-            BlueprintName = "simmer"
-            ReferencedContainer = "container:../simmer-ios/simmer.xcodeproj">
+            BuildableName = "dishboard.app"
+            BlueprintName = "dishboard"
+            ReferencedContainer = "container:../dishboard-ios/dishboard.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>

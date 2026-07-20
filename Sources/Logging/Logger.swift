@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Dependencies
 import os
 
 public protocol LoggingService: Sendable {
@@ -16,52 +15,24 @@ public protocol LoggingService: Sendable {
     func critical(_ message: String)
 }
 
-final class LoggingServiceLiveValue: LoggingService {
+public final class OSLoggingService: LoggingService {
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "general")
+
+    public init() {}
     
-    func debug(_ message: String) {
+    public func debug(_ message: String) {
         logger.debug("\(message)")
     }
     
-    func info(_ message: String) {
+    public func info(_ message: String) {
         logger.info("\(message)")
     }
     
-    func error(_ message: String) {
+    public func error(_ message: String) {
         logger.error("\(message)")
     }
     
-    func critical(_ message: String) {
+    public func critical(_ message: String) {
         logger.critical("\(message)")
-    }
-}
-
-final class LoggingServicePreviewValue: LoggingService {
-    func debug(_ message: String) {
-        print("[DEBUG] \(message)")
-    }
-    
-    func info(_ message: String) {
-        print("[INFO] \(message)")
-    }
-    
-    func error(_ message: String) {
-        print("[ERROR] \(message)")
-    }
-    
-    func critical(_ message: String) {
-        print("[CRITICAL] \(message)")
-    }
-}
-
-public enum LoggingServiceKey: DependencyKey {
-    public static let liveValue: LoggingService = LoggingServiceLiveValue()
-    public static let previewValue: LoggingService = LoggingServicePreviewValue()
-}
-
-public extension DependencyValues {
-    var loggingService: LoggingService {
-        get { self[LoggingServiceKey.self] }
-        set { self[LoggingServiceKey.self] = newValue }
     }
 }

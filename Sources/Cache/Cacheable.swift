@@ -7,12 +7,10 @@
 
 import Foundation
 
-public protocol Cacheable: Sendable, Codable, Sampleable {}
+public protocol Cacheable: Sendable, Codable {}
 
 extension Array: Cacheable where Element: Cacheable {}
 
 extension Set: Cacheable where Element: Cacheable {}
 
-extension String: Cacheable {
-    public static let sample = "Sample"
-}
+extension String: Cacheable {}

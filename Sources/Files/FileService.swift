@@ -5,7 +5,6 @@
 //  Created by BJ Beecher on 2/8/25.
 //
 
-import Dependencies
 import Foundation
 import VLSharedModels
 import VLCache
@@ -17,11 +16,15 @@ public protocol FileService: Sendable {
     func delete(files: [File]) async throws
 }
 
-public final class FileServiceLiveValue: FileService, @unchecked Sendable {
-    @Dependency(\.codableStorageService) private var codableStorageService
+public final class LocalFileService: FileService, @unchecked Sendable {
+    private let codableStorageService: CodableCacheService
     
     private let fileManager = FileManager.default
     private let filesStorageId = "file-metadata"
+
+    public init(codableStorageService: CodableCacheService) {
+        self.codableStorageService = codableStorageService
+    }
     
     public func createFile(data: Data, contentType: ContentType) async throws -> File {
         let id = UUID()
@@ -37,12 +40,12 @@ public final class FileServiceLiveValue: FileService, @unchecked Sendable {
         try data.write(to: url, options: .atomic)
         let file = File(id: id, url: url, contentType: contentType)
         
-        if try await codableStorageService.exists(id: filesStorageId, type: Set<File>.self) {
-            try await codableStorageService.update(id: filesStorageId) { (files: inout Set<File>) in
+        if try await codableStorageService.contains(key: filesStorageId) {
+            try await codableStorageService.update(key: filesStorageId) { (files: inout Set<File>) in
                 files.insert(file)
             }
         } else {
-            try await codableStorageService.save(Set([file]), id: filesStorageId)
+            try await codableStorageService.save(Set([file]), key: filesStorageId)
         }
         
         return file
@@ -53,7 +56,7 @@ public final class FileServiceLiveValue: FileService, @unchecked Sendable {
             try fileManager.removeItem(at: file.url)
         }
         
-        try await codableStorageService.update(id: filesStorageId) { (files: inout Set<File>) in
+        try await codableStorageService.update(key: filesStorageId) { (files: inout Set<File>) in
             files.remove(file)
         }
     }
@@ -62,25 +65,5 @@ public final class FileServiceLiveValue: FileService, @unchecked Sendable {
         for file in files {
             try await delete(file: file)
         }
-    }
-}
-
-public final class FileServicePreviewValue: FileService {
-    public func createFile(data: Data, contentType: ContentType) async throws -> File { .sample }
-    public func delete(file: File) async throws {}
-    public func delete(files: [File]) async throws {}
-}
-
-// MARK: Dependency
-
-public enum FileServiceKey: DependencyKey {
-    public static let liveValue: FileService = FileServiceLiveValue()
-    public static let previewValue: FileService = FileServicePreviewValue()
-}
-
-public extension DependencyValues {
-    var fileService: FileService {
-        get { self[FileServiceKey.self] }
-        set { self[FileServiceKey.self] = newValue }
     }
 }
