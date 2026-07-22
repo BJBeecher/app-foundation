@@ -45,25 +45,22 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
                 loadingOverlay(loadingString)
             }
         }
+        .modifier(
+            RouterAlertModifier(
+                alert: store.presentedAlert,
+                isPresented: alertBinding(presentedOverSheet: false)
+            )
+        )
         .sheet(item: $store.presentedSheet.sending(\.sheetDidUpdate)) { destination in
             NavigationStack {
                 content(destination, routerNamespace)
             }
-        }
-        .alert(
-            store.presentedAlert?.title ?? "",
-            isPresented: $store.isAlertPresented.sending(\.isShowingAlertDidUpdate),
-            presenting: store.presentedAlert
-        ) { alert in
-            ForEach(alert.buttons) { button in
-                Button(button.title, role: button.role) {
-                    alert.tapped?(button)
-                }
-            }
-        } message: { alert in
-            if let message = alert.message {
-                Text(message)
-            }
+            .modifier(
+                RouterAlertModifier(
+                    alert: store.presentedAlert,
+                    isPresented: alertBinding(presentedOverSheet: true)
+                )
+            )
         }
         .task {
             await store.send(.observeDestinations).finish()
@@ -82,6 +79,20 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
         }
     }
 
+    private func alertBinding(presentedOverSheet: Bool) -> Binding<Bool> {
+        Binding(
+            get: {
+                store.isAlertPresented && (store.presentedSheet != nil) == presentedOverSheet
+            },
+            set: { isPresented in
+                guard !isPresented,
+                      store.isAlertPresented,
+                      (store.presentedSheet != nil) == presentedOverSheet else { return }
+                store.send(.isShowingAlertDidUpdate(false))
+            }
+        )
+    }
+
     @ViewBuilder
     private func loadingOverlay(_ loadingString: String) -> some View {
         let base = ProgressView(loadingString)
@@ -95,6 +106,29 @@ public struct RouterView<Destination: RouterDestination, Content: View>: View {
         } else {
             base
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+}
+
+private struct RouterAlertModifier: ViewModifier {
+    let alert: PopupAlert?
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content.alert(
+            alert?.title ?? "",
+            isPresented: $isPresented,
+            presenting: alert
+        ) { alert in
+            ForEach(alert.buttons) { button in
+                Button(button.title, role: button.role) {
+                    alert.tapped?(button)
+                }
+            }
+        } message: { alert in
+            if let message = alert.message {
+                Text(message)
+            }
         }
     }
 }
