@@ -3,13 +3,7 @@ import Foundation
 struct StoredQuery<Value: Codable & Sendable>: Codable, Sendable {
     var value: Value
     var updatedAt: Date
-    var isInvalidated: Bool
-
-    init(value: Value, updatedAt: Date, isInvalidated: Bool = false) {
-        self.value = value
-        self.updatedAt = updatedAt
-        self.isInvalidated = isInvalidated
-    }
+    var isInvalidated = false
 }
 
 public protocol QueryStorage: Sendable {

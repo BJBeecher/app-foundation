@@ -1,28 +1,18 @@
 import SwiftUI
 import VLQuery
 
-public struct PaginationAsyncView<
+public struct PaginationValueAsyncView<
     Value: Codable & Sendable,
     Item: Sendable,
     Content: View
 >: View {
-    @Environment(\.queryClient) private var queryClient
     @State private var failedCursor: String?
     @State private var loadingMore = false
 
     private let pagination: PaginationConfiguration<Value, Item>
-    private let paginationDirection: PaginationDirection
-    private let content: (Binding<Value>) -> Content
-
-    public init(
-        pagination: PaginationConfiguration<Value, Item>,
-        direction: PaginationDirection = .append,
-        @ViewBuilder content: @escaping (Binding<Value>) -> Content
-    ) {
-        self.pagination = pagination
-        self.paginationDirection = direction
-        self.content = content
-    }
+    private let direction: PaginationDirection
+    @Environment(\.queryClient) private var queryClient
+    private let content: (Value) -> Content
 
     public init(
         pagination: PaginationConfiguration<Value, Item>,
@@ -30,8 +20,8 @@ public struct PaginationAsyncView<
         @ViewBuilder content: @escaping (Value) -> Content
     ) {
         self.pagination = pagination
-        self.paginationDirection = direction
-        self.content = { content($0.wrappedValue) }
+        self.direction = direction
+        self.content = content
     }
 
     public var body: some View {
@@ -45,18 +35,9 @@ public struct PaginationAsyncView<
                 case .success:
                     if let value = query.data {
                         LazyVStack(spacing: 16) {
-                            let binding = Binding(
-                                get: { value },
-                                set: { value in
-                                    Task {
-                                        await queryClient.setQueryData(key: pagination.initial.key, value)
-                                    }
-                                }
-                            )
-
                             if pagination.items(value).isEmpty {
                                 ZStack {
-                                    content(binding)
+                                    content(value)
                                     ContentUnavailableView(
                                         "Nothing here yet",
                                         systemImage: "tray"
@@ -64,13 +45,13 @@ public struct PaginationAsyncView<
                                 }
                                 .containerRelativeFrame(.vertical)
                             } else {
-                                if paginationDirection == .prepend {
+                                if direction == .prepend {
                                     loadingMoreView(cursor: pagination.cursor(value))
                                 }
 
-                                content(binding)
+                                content(value)
 
-                                if paginationDirection == .append {
+                                if direction == .append {
                                     loadingMoreView(cursor: pagination.cursor(value))
                                 }
                             }
@@ -118,7 +99,7 @@ public struct PaginationAsyncView<
                 try await pagination.fetchPage(
                     using: queryClient,
                     cursor: cursor,
-                    direction: paginationDirection
+                    direction: direction
                 )
             } catch {
                 failedCursor = cursor

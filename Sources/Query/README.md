@@ -60,7 +60,8 @@ FetchOptions(
     garbageCollectionTime: .seconds(300),
     retry: .maxAttempts(3),
     retryDelay: .exponentialBackoff(),
-    storage: appQueryStorage
+    storage: appQueryStorage,
+    persistence: .debounced(.milliseconds(250))
 )
 ```
 
@@ -69,6 +70,7 @@ FetchOptions(
 - `retry`: whether failed fetches should be retried. The default is `.maxAttempts(3)`.
 - `retryDelay`: how long to wait between retry attempts. The default is `.exponentialBackoff()`.
 - `storage`: optional persistence used for `Codable & Sendable` query values. The default is `nil`, which makes the client memory-only.
+- `persistence`: `.immediate` writes every cache change, while `.debounced(Duration)` coalesces nearby writes for the same key. The client default is `.immediate` when storage is configured.
 
 `Fetch` can override the client's default fetch options per query:
 
@@ -176,6 +178,17 @@ struct UserScreen: View {
         }
     }
 }
+```
+
+Query state fields are observed independently. For example, reading `user.data` does not make the
+view dependent on `user.isFetching`.
+
+Pass `select:` to `@QueryState` when a view needs only an equatable projection of a larger query.
+The selection is not published when unrelated query data changes:
+
+```swift
+@QueryState(userFetch, select: { $0.user.name })
+private var userName
 ```
 
 ## Updating Cached Data
@@ -445,6 +458,15 @@ let queryClient = QueryClient(
 )
 ```
 
+Frequently edited caches can coalesce persistence while retaining immediate in-memory updates:
+
+```swift
+FetchOptions(
+    storage: fileStorage,
+    persistence: .debounced(.milliseconds(250))
+)
+```
+
 When storage is provided, `Codable & Sendable` query values use the same public APIs. The client handles converting `QueryKey` values into stable string keys and stores its own query metadata envelope.
 
 ## Removing Data
@@ -460,3 +482,6 @@ Clear all currently tracked queries:
 ```swift
 await queryClient.clear()
 ```
+
+Removing or clearing data publishes a pending snapshot to active observers and keeps those
+observers attached. It does not automatically refetch removed data.

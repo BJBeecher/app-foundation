@@ -11,12 +11,14 @@ public struct PaginationConfiguration<Value: Codable & Sendable, Item: Sendable>
     public let items: @Sendable (Value) -> [Item]
     public let page: @Sendable (_ cursor: String) async throws -> Value
     public let merge: @Sendable (_ cached: inout Value, _ page: Value, _ direction: PaginationDirection) -> Void
+    public let replaceItem: (@Sendable (_ cached: inout Value, _ item: Item) -> Void)?
 
     public init(
         initial: Fetch<Value>,
         cursor: @escaping @Sendable (Value) -> String?,
         items: @escaping @Sendable (Value) -> [Item],
         page: @escaping @Sendable (_ cursor: String) async throws -> Value,
+        replaceItem: (@Sendable (_ cached: inout Value, _ item: Item) -> Void)? = nil,
         merge: @escaping @Sendable (
             _ cached: inout Value,
             _ page: Value,
@@ -27,6 +29,7 @@ public struct PaginationConfiguration<Value: Codable & Sendable, Item: Sendable>
         self.cursor = cursor
         self.items = items
         self.page = page
+        self.replaceItem = replaceItem
         self.merge = merge
     }
 

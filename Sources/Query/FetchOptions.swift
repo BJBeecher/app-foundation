@@ -6,20 +6,28 @@ public struct FetchOptions: Sendable {
     public var retry: RetryPolicy
     public var retryDelay: RetryDelay
     public var storage: QueryStorage?
+    public var persistence: QueryPersistence?
 
     public init(
         staleTime: Duration = .zero,
         garbageCollectionTime: Duration? = .seconds(300),
         retry: RetryPolicy = .maxAttempts(3),
         retryDelay: RetryDelay = .exponentialBackoff(),
-        storage: QueryStorage? = nil
+        storage: QueryStorage? = nil,
+        persistence: QueryPersistence? = nil
     ) {
         self.staleTime = staleTime
         self.garbageCollectionTime = garbageCollectionTime
         self.retry = retry
         self.retryDelay = retryDelay
         self.storage = storage
+        self.persistence = persistence
     }
+}
+
+public enum QueryPersistence: Sendable, Equatable {
+    case immediate
+    case debounced(Duration)
 }
 
 public enum RetryPolicy: Sendable, Equatable {

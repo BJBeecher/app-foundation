@@ -49,6 +49,10 @@ let feedPagination = PaginationConfiguration(
     page: { cursor in
         try await api.fetchFeed(cursor: cursor)
     },
+    replaceItem: { cached, post in
+        guard let index = cached.posts.firstIndex(where: { $0.id == post.id }) else { return }
+        cached.posts[index] = post
+    },
     merge: { cached, page, direction in
         switch direction {
         case .append:
@@ -61,16 +65,20 @@ let feedPagination = PaginationConfiguration(
 )
 ```
 
-Use the same configuration for a list or pager:
+`PaginationAsyncView` scopes observation and bindings to each identifiable, equatable item. Updating
+one item does not invalidate unchanged rows:
 
 ```swift
-PaginationAsyncView(pagination: feedPagination) { feed in
-    FeedView(feed: feed)
+PaginationAsyncView(pagination: feedPagination) { $post in
+    PostView(post: $post)
 }
 
 AsyncPager(pagination: feedPagination) { post in
     PostView(post: post)
 }
 ```
+
+Use `PaginationValueAsyncView` for the less common case where content needs the complete immutable
+response rather than item-scoped rows.
 
 Page requests use cursor-specific `Fetch` values internally, so `QueryClient` still deduplicates concurrent requests without knowing anything about pagination.

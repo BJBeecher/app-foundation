@@ -9,6 +9,10 @@ public struct QuerySnapshot<Value: Sendable>: Sendable {
     public var updatedAt: Date?
     public var isStale: Bool
 
+    // Used by SwiftUI query state to distinguish data changes from metadata-only
+    // snapshots without requiring every query value to conform to Equatable.
+    package var dataRevision: UInt64 = 0
+
     public var isLoading: Bool {
         status == .pending && data == nil
     }

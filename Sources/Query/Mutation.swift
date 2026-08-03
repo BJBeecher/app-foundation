@@ -24,6 +24,9 @@ public actor Mutation<Variables: Sendable, Value: Sendable> {
             let observerID = UUID()
             let task = Task {
                 await self.addObserver(id: observerID, continuation: continuation)
+                if Task.isCancelled {
+                    await self.removeObserver(id: observerID)
+                }
             }
 
             continuation.onTermination = { _ in
