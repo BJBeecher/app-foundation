@@ -52,9 +52,13 @@ public extension MutationState where Variables == Void {
     }
 }
 
+// Internal rather than private, for the same reason as QueryValueStorage: a generic type
+// in another module that stores a MutationState has to build metadata for this class, and
+// a private class's metadata accessor is not linkable from outside VLQuery.
 @MainActor
 @Observable
-private final class MutationStateStorage<Variables: Sendable, Value: Sendable> {
+@usableFromInline
+final class MutationStateStorage<Variables: Sendable, Value: Sendable> {
     private(set) var variables: Variables?
     private(set) var data: Value?
     private(set) var error: Error?

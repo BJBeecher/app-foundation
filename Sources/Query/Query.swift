@@ -80,9 +80,15 @@ public struct QueryState<Value: Sendable>: @preconcurrency DynamicProperty {
     }
 }
 
+// Internal, but not file-private: QueryState is a public generic type, so any generic
+// type in another module that stores one — VLViews.QueryView — has to build metadata for
+// this storage class, and a file-private class's metadata accessor is not linkable from
+// outside VLQuery. @usableFromInline gives the accessor external linkage while keeping
+// the class out of the public API.
 @MainActor
 @Observable
-fileprivate final class QueryValueStorage<Value: Sendable> {
+@usableFromInline
+final class QueryValueStorage<Value: Sendable> {
     private(set) var key: QueryKey
     private(set) var data: Value?
     private(set) var error: Error?
