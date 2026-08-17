@@ -16,9 +16,14 @@ public protocol LoggingService: Sendable {
 }
 
 public final class OSLoggingService: LoggingService {
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "general")
+    private let logger: Logger
 
-    public init() {}
+    public init(
+        subsystem: String = Bundle.main.bundleIdentifier ?? "",
+        category: String = "general"
+    ) {
+        logger = Logger(subsystem: subsystem, category: category)
+    }
     
     public func debug(_ message: String) {
         logger.debug("\(message)")

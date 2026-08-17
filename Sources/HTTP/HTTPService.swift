@@ -27,10 +27,12 @@ public final class AlamofireHTTPService: HTTPService, @unchecked Sendable {
     private let session: Session
     public let unauthorizedPublisher = PassthroughSubject<Void, Never>()
     
-    public init(
-        session: Session = .default
-    ) {
+    public init(session: Session) {
         self.session = session
+    }
+
+    public convenience init(eventMonitors: [any EventMonitor] = []) {
+        self.init(session: Session(eventMonitors: eventMonitors))
     }
 }
 
@@ -77,16 +79,45 @@ public extension AlamofireHTTPService {
             dataRequest = session.request(request)
         }
 
-        let response = await dataRequest.serializingData().response
+        if Output.self == EmptyResponse.self {
+            let response = await dataRequest
+                .validate(statusCode: 200...299)
+                .serializingData()
+                .response
+            try checkForServerError(response: response.response, error: response.error)
+            _ = try response.result.get()
+            return EmptyResponse() as! Output
+        }
+
+        if Output.self == AttributedString.self {
+            let response = await dataRequest
+                .validate(statusCode: 200...299)
+                .serializingData()
+                .response
+            try checkForServerError(response: response.response, error: response.error)
+            let attributedString = try AttributedString(
+                markdown: try response.result.get(),
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )
+            return attributedString as! Output
+        }
+
+        let response = await dataRequest
+            .validate(statusCode: 200...299)
+            .serializingDecodable(
+                SendableDecodable<Output>.self,
+                decoder: intercepted.decoder
+            )
+            .response
         try checkForServerError(response: response.response, error: response.error)
-        return try handleResponse(data: try response.result.get(), decoder: intercepted.decoder)
+        return try response.result.get().value
     }
 }
 
 // MARK: Private methods
 
 private extension AlamofireHTTPService {
-    func intercept<T: Decodable>(endpoint:  HTTPEndpoint<T>) async throws -> HTTPEndpoint<T> {
+    func intercept<T: Decodable>(endpoint: HTTPEndpoint<T>) async throws -> HTTPEndpoint<T> {
         var new = endpoint
         
         for interceptor in endpoint.interceptors {
@@ -119,15 +150,13 @@ private extension AlamofireHTTPService {
         }
     }
     
-    func handleResponse<Output: Decodable>(data: Data, decoder: JSONDecoder) throws -> Output {
-        if Output.self == EmptyResponse.self {
-            return EmptyResponse() as! Output
-        } else if Output.self == AttributedString.self {
-            let string = try AttributedString(markdown: data, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-            return string as! Output
-        } else {
-            return try decoder.decode(Output.self, from: data)
-        }
+}
+
+private struct SendableDecodable<Value: Decodable>: Decodable, @unchecked Sendable {
+    let value: Value
+
+    init(from decoder: any Decoder) throws {
+        value = try Value(from: decoder)
     }
 }
 

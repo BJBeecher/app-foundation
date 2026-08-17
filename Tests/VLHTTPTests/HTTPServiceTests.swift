@@ -27,6 +27,21 @@ private final class LockedFlag: @unchecked Sendable {
     }
 }
 
+private final class DecodingFailureMonitor: EventMonitor, @unchecked Sendable {
+    let queue = DispatchQueue(label: "DecodingFailureMonitor")
+    let receivedFailure = LockedFlag()
+
+    func request<Value>(
+        _ request: DataRequest,
+        didParseResponse response: DataResponse<Value, AFError>
+    ) where Value: Sendable {
+        guard case .responseSerializationFailed(reason: .decodingFailed) = response.error else {
+            return
+        }
+        receivedFailure.set()
+    }
+}
+
 private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
 
@@ -55,10 +70,12 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
 @Suite(.serialized)
 struct HTTPServiceTests {
-    private func makeService() -> AlamofireHTTPService {
+    private func makeService(eventMonitors: [any EventMonitor] = []) -> AlamofireHTTPService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
-        return AlamofireHTTPService(session: Session(configuration: configuration))
+        return AlamofireHTTPService(
+            session: Session(configuration: configuration, eventMonitors: eventMonitors)
+        )
     }
 
     @Test
@@ -80,6 +97,31 @@ struct HTTPServiceTests {
         let output = try await service.call(endpoint: endpoint)
 
         #expect(output == TestResponse(id: 42))
+    }
+
+    @Test
+    func decodingFailureIsPublishedToEventMonitor() async throws {
+        MockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"id":"not-an-integer"}"#.utf8))
+        }
+        defer { MockURLProtocol.handler = nil }
+
+        let monitor = DecodingFailureMonitor()
+        let service = makeService(eventMonitors: [monitor])
+        let endpoint = HTTPEndpoint<TestResponse>(
+            url: URL(string: "https://example.com/item")!
+        )
+
+        _ = try? await service.call(endpoint: endpoint)
+        monitor.queue.sync {}
+
+        #expect(monitor.receivedFailure.value)
     }
 
     @Test
