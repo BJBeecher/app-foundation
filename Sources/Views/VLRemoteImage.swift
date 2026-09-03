@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>: View {
     let url: URL?
+    let cacheKey: String?
     let contentMode: SwiftUI.ContentMode
     let requestModifier: RequestModifier
 
@@ -13,10 +14,12 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
 
     public init(
         url: URL?,
+        cacheKey: String? = nil,
         contentMode: SwiftUI.ContentMode = .fill,
         requestModifier: RequestModifier
     ) {
         self.url = url
+        self.cacheKey = cacheKey
         self.contentMode = contentMode
         self.requestModifier = requestModifier
     }
@@ -43,7 +46,7 @@ public struct VLRemoteImage<RequestModifier: AsyncImageDownloadRequestModifier>:
         let downsamplingSize = downsamplingSize(for: size)
 
         if let url {
-            KFImage(url)
+            KFImage.url(url, cacheKey: cacheKey)
                 .cacheOriginalImage()
                 .requestModifier(requestModifier)
                 .backgroundDecode()
