@@ -42,7 +42,7 @@ public struct PaginationConfiguration<Value: Codable & Sendable, Item: Sendable>
         let key = QueryKey(
             initial.key.parts + [.string("page"), .string(cursor)]
         )
-        var pageOptions = initial.options
+        var pageOptions = initial.options ?? FetchOptions()
         pageOptions.staleTime = .zero
 
         return try await client.fetch(
