@@ -71,19 +71,24 @@ public struct PaginationValueAsyncView<
     @ViewBuilder
     private func loadingMoreView(cursor: String?) -> some View {
         if let cursor {
-            if failedCursor == cursor {
-                Button {
-                    loadPage(cursor: cursor)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .accessibilityLabel("Retry loading")
-            } else if !loadingMore {
-                ProgressView()
-                    .tint(.secondary)
-                    .onAppear {
+            ZStack {
+                if failedCursor == cursor {
+                    Button {
                         loadPage(cursor: cursor)
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
                     }
+                    .accessibilityLabel("Retry loading")
+                } else if loadingMore {
+                    ProgressView()
+                        .tint(.secondary)
+                }
+            }
+            .frame(height: 44)
+            .id(cursor)
+            .onAppear {
+                guard failedCursor != cursor else { return }
+                loadPage(cursor: cursor)
             }
         }
     }

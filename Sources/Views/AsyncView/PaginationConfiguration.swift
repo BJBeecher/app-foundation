@@ -42,11 +42,13 @@ public struct PaginationConfiguration<Value: Codable & Sendable, Item: Sendable>
         let key = QueryKey(
             initial.key.parts + [.string("page"), .string(cursor)]
         )
+        var pageOptions = initial.options
+        pageOptions.staleTime = .zero
 
         return try await client.fetch(
             Fetch(
                 key: key,
-                options: initial.options,
+                options: pageOptions,
                 operation: {
                     let nextPage = try await self.page(cursor)
                     await client.updateQueryData(key: initial.key, as: Value.self) { cached in
