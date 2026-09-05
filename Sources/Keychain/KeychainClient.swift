@@ -14,6 +14,9 @@ public final class KeychainClient {
 
     let encoder: JSONEncoder
     let decoder: JSONDecoder
+    let accessGroup: String?
+    let service: String?
+    let accessibility: CFString?
 
     init(
         addItem: @escaping AddItem,
@@ -21,7 +24,10 @@ public final class KeychainClient {
         fetchItem: @escaping FetchItem,
         deleteItem: @escaping DeleteItem,
         encoder: JSONEncoder,
-        decoder: JSONDecoder
+        decoder: JSONDecoder,
+        accessGroup: String? = nil,
+        service: String? = nil,
+        accessibility: CFString? = nil
     ) {
         self.addItem = addItem
         self.updateItem = updateItem
@@ -29,28 +35,52 @@ public final class KeychainClient {
         self.deleteItem = deleteItem
         self.encoder = encoder
         self.decoder = decoder
+        self.accessGroup = accessGroup
+        self.service = service
+        self.accessibility = accessibility
     }
 
-    public convenience init() {
+    public convenience init(
+        accessGroup: String? = nil,
+        service: String? = nil,
+        accessibility: CFString? = nil
+    ) {
         self.init(
             addItem: SecItemAdd,
             updateItem: SecItemUpdate,
             fetchItem: SecItemCopyMatching,
             deleteItem: SecItemDelete,
             encoder: .init(),
-            decoder: .init()
+            decoder: .init(),
+            accessGroup: accessGroup,
+            service: service,
+            accessibility: accessibility
         )
+    }
+
+    func query(forKey key: String) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+        ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        if let service {
+            query[kSecAttrService as String] = service
+        }
+        return query
     }
 }
 
 public extension KeychainClient {
     func insert<Value: Codable>(_ value: Value, forKey key: String) throws {
         let data = try encoder.encode(value)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-        ]
+        var query = query(forKey: key)
+        query[kSecValueData as String] = data
+        if let accessibility {
+            query[kSecAttrAccessible as String] = accessibility
+        }
 
         let status = addItem(query as CFDictionary, nil)
 
@@ -80,10 +110,7 @@ public extension KeychainClient {
 
     func updateValue<Value: Codable>(with newValue: Value, forKey key: String) throws {
         let newData = try encoder.encode(newValue)
-        let searchQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-        ]
+        let searchQuery = query(forKey: key)
         let updateQuery: [String: Any] = [
             kSecValueData as String: newData,
         ]
@@ -96,13 +123,10 @@ public extension KeychainClient {
     }
 
     func value<Value: Codable>(forKey key: String) throws -> Value? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnAttributes as String: true,
-            kSecReturnData as String: true,
-        ]
+        var query = query(forKey: key)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnAttributes as String] = true
+        query[kSecReturnData as String] = true
 
         var item: CFTypeRef?
         let status = fetchItem(query as CFDictionary, &item)
@@ -122,10 +146,7 @@ public extension KeychainClient {
     }
 
     func deleteValue(forKey key: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-        ]
+        let query = query(forKey: key)
 
         let status = deleteItem(query as CFDictionary)
 
