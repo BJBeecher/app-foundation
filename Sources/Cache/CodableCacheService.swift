@@ -37,6 +37,7 @@ public extension CodableCacheService {
 
 public actor DiskCodableCacheService: CodableCacheService {
     public let directory: FileManager.SearchPathDirectory
+    public let baseDirectoryURL: URL?
     private let fileManager = FileManager.default
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -44,6 +45,14 @@ public actor DiskCodableCacheService: CodableCacheService {
 
     public init(directory: FileManager.SearchPathDirectory) {
         self.directory = directory
+        self.baseDirectoryURL = nil
+        self.encoder = JSONEncoder()
+        self.decoder = JSONDecoder()
+    }
+
+    public init(baseDirectoryURL: URL) {
+        self.directory = .applicationSupportDirectory
+        self.baseDirectoryURL = baseDirectoryURL
         self.encoder = JSONEncoder()
         self.decoder = JSONDecoder()
     }
@@ -157,7 +166,12 @@ public actor DiskCodableCacheService: CodableCacheService {
     }
 
     private func cacheDirectoryURL() throws -> URL {
-        guard let baseURL = fileManager.urls(for: directory, in: .userDomainMask).first else {
+        let baseURL: URL
+        if let baseDirectoryURL {
+            baseURL = baseDirectoryURL
+        } else if let searchPathURL = fileManager.urls(for: directory, in: .userDomainMask).first {
+            baseURL = searchPathURL
+        } else {
             throw Failure.unableToFindCacheDirectory
         }
 
